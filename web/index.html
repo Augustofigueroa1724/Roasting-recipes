@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buscador de recetas de tueste</title>
+<style>
+  :root { --bg:#1b1410; --card:#2a201a; --ink:#f3e9df; --muted:#b09c8a; --accent:#d98a3d; --line:#3a2c22; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  .wrap { display:grid; grid-template-columns: 280px 1fr; gap:0; min-height:calc(100vh - 70px); }
+  .filters { padding:20px 24px; border-right:1px solid var(--line); }
+  .results { padding:20px 24px; }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.04em;
+          color:var(--muted); margin:14px 0 5px; }
+  input[type=text], select { width:100%; padding:9px 10px; background:var(--card); color:var(--ink);
+          border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  input[type=text]:focus, select:focus { outline:none; border-color:var(--accent); }
+  .btn { margin-top:18px; width:100%; padding:10px; background:var(--accent); color:#1b1410;
+         border:0; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
+  .count { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
+          padding:14px 16px; margin-bottom:12px; cursor:pointer; transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card h3 { margin:0 0 6px; font-size:16px; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .tag { font-size:11px; padding:3px 8px; border-radius:20px; background:#3a2c22; color:var(--ink); }
+  .tag.level { background:#4a3214; color:var(--accent); }
+  .metrics { display:flex; flex-wrap:wrap; gap:14px; font-size:13px; color:var(--muted); margin-top:6px; }
+  .metrics b { color:var(--ink); font-weight:600; }
+  .empty { color:var(--muted); padding:40px 0; text-align:center; }
+  .empty .hint { font-size:13px; margin-top:8px; }
+  dialog { background:var(--card); color:var(--ink); border:1px solid var(--line);
+           border-radius:12px; max-width:560px; width:90%; padding:0; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  .dlg-head { padding:18px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+  .dlg-body { padding:18px 20px; }
+  .dlg-body table { width:100%; border-collapse:collapse; font-size:13px; }
+  .dlg-body td { padding:5px 0; border-bottom:1px solid var(--line); }
+  .dlg-body td:first-child { color:var(--muted); width:50%; }
+  .x { background:none; border:0; color:var(--muted); font-size:20px; cursor:pointer; }
+  .note { font-size:11px; color:var(--muted); margin-top:4px; font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>☕ Buscador de recetas de tueste</h1>
+  <div class="sub">Filtra por criterios cerrados o busca por texto libre. Datos de tu catálogo (catalog.db).</div>
+</header>
+
+<div class="wrap">
+  <aside class="filters">
+    <label for="q">Texto libre</label>
+    <input type="text" id="q" placeholder="nombre de la receta…">
+
+    <label for="country">Origen / café</label>
+    <select id="country"><option value="">Todos</option></select>
+
+    <label for="variety">Variedad</label>
+    <select id="variety"><option value="">Todas</option></select>
+
+    <label for="process">Proceso</label>
+    <select id="process"><option value="">Todos</option></select>
+
+    <label for="level">Nivel de tueste</label>
+    <select id="level"><option value="">Todos</option></select>
+    <div class="note">Estimado por DTR cuando no hay dato oficial.</div>
+
+    <label for="device">Dispositivo</label>
+    <select id="device"><option value="">Todos</option></select>
+
+    <button class="btn" id="searchBtn">Buscar</button>
+    <button class="btn secondary" id="clearBtn">Limpiar filtros</button>
+  </aside>
+
+  <main class="results">
+    <div class="count" id="count">Cargando…</div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<dialog id="detail">
+  <div class="dlg-head">
+    <strong id="d-title">Receta</strong>
+    <button class="x" onclick="document.getElementById('detail').close()">×</button>
+  </div>
+  <div class="dlg-body" id="d-body"></div>
+</dialog>
+
+<script>
+const $ = id => document.getElementById(id);
+const FILTERS = ["country","variety","process","level","device"];
+
+async function loadFacets() {
+  const f = await (await fetch("/api/facets")).json();
+  const labels = { country:"country", variety:"variety", process:"process", level:"level", device:"device" };
+  FILTERS.forEach(key => {
+    const sel = $(key);
+    (f[labels[key]] || []).forEach(v => {
+      const o = document.createElement("option"); o.value = v; o.textContent = v; sel.appendChild(o);
+    });
+  });
+}
+
+function fmtTime(s) {
+  if (s == null) return "—";
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return `${m}:${String(sec).padStart(2,"0")}`;
+}
+
+async function doSearch() {
+  const p = new URLSearchParams();
+  if ($("q").value.trim()) p.set("q", $("q").value.trim());
+  FILTERS.forEach(k => { if ($(k).value) p.set(k, $(k).value); });
+  const data = await (await fetch("/api/search?" + p.toString())).json();
+  render(data.results || []);
+}
+
+function render(rows) {
+  $("count").textContent = rows.length + (rows.length === 1 ? " receta" : " recetas");
+  const list = $("list");
+  if (!rows.length) {
+    list.innerHTML = `<div class="empty">Sin resultados para estos criterios.
+      <div class="hint">En la FASE 3, una búsqueda sin resultados disparará la consulta a otras fuentes y la creación de una receta nueva.</div></div>`;
+    return;
+  }
+  list.innerHTML = rows.map(r => {
+    const tags = [];
+    if (r.country) tags.push(`<span class="tag">${r.country}</span>`);
+    (r.varieties||[]).forEach(v => tags.push(`<span class="tag">${v}</span>`));
+    if (r.process) tags.push(`<span class="tag">${r.process}</span>`);
+    if (r.roastLevel) tags.push(`<span class="tag level">${r.roastLevel}</span>`);
+    return `<div class="card" onclick="openDetail('${r.uid}')">
+      <h3>${r.roastName || "(sin nombre)"}</h3>
+      <div class="tags">${tags.join("")}</div>
+      <div class="metrics">
+        <span>⏱ Total <b>${fmtTime(r.totalRoastTime)}</b></span>
+        <span>1C <b>${fmtTime(r.firstCrackTime)}</b></span>
+        <span>DTR <b>${r.developmentRatio != null ? r.developmentRatio+"%" : "—"}</b></span>
+        <span>Merma <b>${r.weightLoss != null ? r.weightLoss+"%" : "—"}</b></span>
+        <span>${r.deviceType || ""}</span>
+      </div></div>`;
+  }).join("");
+}
+
+async function openDetail(uid) {
+  const r = await (await fetch("/api/roast/" + uid)).json();
+  $("d-title").textContent = r.roastName || "Receta";
+  const ms = r.milestones || {};
+  const rows = [
+    ["Origen", r.country || "—"],
+    ["Variedades", (r.varieties||[]).join(", ") || "—"],
+    ["Proceso", r.process || "—"],
+    ["Nivel (estimado)", r.roastLevel || "—"],
+    ["Tiempo total", fmtTime(r.totalRoastTime)],
+    ["First crack", `${fmtTime(r.firstCrackTime)}${r.firstCrackTemp ? " · "+r.firstCrackTemp+"°C" : ""}`],
+    ["Desarrollo (DTR)", r.developmentRatio != null ? r.developmentRatio+"%" : "—"],
+    ["Peso verde / tostado", `${r.weightGreen||0} g → ${r.weightRoasted||0} g`],
+    ["Merma", r.weightLoss != null ? r.weightLoss+"%" : "—"],
+    ["Precalentamiento", r.preheatTemperature != null ? r.preheatTemperature+"°C" : "—"],
+    ["Dispositivo", `${r.deviceType||"—"} (s/n ${r.serialNumber||"—"})`],
+    ["Curvas", r.hasDetail && r.curveLengths ? Object.entries(r.curveLengths).filter(([,n])=>n).map(([k,n])=>`${k}: ${n} pts`).join("<br>") || "—" : "(no descargadas)"],
+    ["Acciones", r.actions ? r.actions.length + " eventos" : "—"],
+  ];
+  $("d-body").innerHTML = "<table>" + rows.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("") + "</table>";
+  $("detail").showModal();
+}
+
+$("searchBtn").onclick = doSearch;
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
+FILTERS.forEach(k => $(k).addEventListener("change", doSearch));
+$("clearBtn").onclick = () => { $("q").value=""; FILTERS.forEach(k => $(k).value=""); doSearch(); };
+
+loadFacets().then(doSearch);
+</script>
+</body>
+</html>
