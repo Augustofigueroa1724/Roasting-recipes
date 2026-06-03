@@ -361,7 +361,9 @@ function drawChart() {
       else if (step) d += ` H ${px} V ${py}`;   // escalón
       else d += ` L ${px} ${py}`;
     });
-    parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`);
+    // línea ancha invisible encima para facilitar el clic/hover sobre la curva
+    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})"/>`);
+    parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2" style="pointer-events:none"/>`);
   });
   parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
   parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
