@@ -1,0 +1,74 @@
+{
+ "uid": "UGCsFUwthvoC_pmoMEPSk",
+ "roastName": "Ethiopia RR Alo Tuke Murago",
+ "dateTime": 1780223846451,
+ "updatedAt": 1780225243440,
+ "weightGreen": 0,
+ "weightRoasted": 0,
+ "totalRoastTime": 604,
+ "preheatTemperature": 220,
+ "beanChargeTemperature": 139.64,
+ "drumChargeTemperature": 221.83,
+ "beanTemperature": [
+  139.68,
+  139.68,
+  139.67,
+  "... (1209 puntos en total, recortado para la muestra)"
+ ],
+ "ibtsTemperature": [
+  220.89,
+  25,
+  25,
+  "... (1209 puntos en total, recortado para la muestra)"
+ ],
+ "beanDerivative": [
+  0.88,
+  0.2,
+  -1.34,
+  "... (1209 puntos en total, recortado para la muestra)"
+ ],
+ "ibtsDerivative": [
+  59.59,
+  58.41,
+  57.25,
+  "... (1209 puntos en total, recortado para la muestra)"
+ ],
+ "differentialAirPressure": [
+  "... (0 puntos en total, recortado para la muestra)"
+ ],
+ "exhaustFanBlowerRpm": [
+  "... (0 puntos en total, recortado para la muestra)"
+ ],
+ "actions": [
+  {
+   "type": "Power",
+   "second": 6,
+   "setting": 6
+  },
+  {
+   "type": "Blower",
+   "second": 6,
+   "setting": 2
+  },
+  {
+   "type": "Drum",
+   "second": 6,
+   "setting": 9
+  },
+  {
+   "type": "Power",
+   "second": 17,
+   "setting": 5
+  },
+  "... (15 acciones en total)"
+ ],
+ "humidity": 0,
+ "ambient": 0,
+ "indexYellowingStart": 0,
+ "indexFirstCrackStart": 1051,
+ "indexFirstCrackEnd": 0,
+ "indexSecondCrackStart": 0,
+ "indexSecondCrackEnd": 0,
+ "serialNumber": 14730,
+ "deviceType": "bullet"
+}

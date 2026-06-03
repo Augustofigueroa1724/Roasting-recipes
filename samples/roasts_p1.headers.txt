@@ -1,0 +1,19 @@
+HTTP/2 401 
+date: Wed, 03 Jun 2026 18:19:52 GMT
+content-type: application/json; charset=utf-8
+content-length: 31
+x-powered-by: Express
+vary: Origin
+access-control-allow-credentials: true
+set-cookie: __cf_bm=Jc7vhUWn549dAoL_eTDIWKGzswquUHUoqL82EdTy5Vs-1780510792.1009915-1.0.1.1-5gu1HzLDkbRPZ1PW3MHET9FidpfECNEXUM5hEARAJsi8dNY6Guab.n59OCdvaq5sKXK7cuDC0b8mue3F6e3s9JAQ3Ci9RPV9tX8_xy6DhqDCDT2OGLZO2jR_Yx7cIygY; HttpOnly; SameSite=None; Secure; Path=/; Domain=api.roast.world; Expires=Wed, 03 Jun 2026 18:49:52 GMT
+etag: W/"1f-LMDtKY1thpdHP7VFguOjlBiztgQ"
+cf-cache-status: DYNAMIC
+x-do-app-origin: e1404405-e6ae-11ec-b1dc-0c42a19a82a7
+cache-control: private
+x-do-orig-status: 401
+server: cloudflare
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=9HGdMMgInSaIitJ81SKjBpndWHhFozB3Zr%2BysbMW8NAEWbuEgmB0nYpanMrLFrXL2HpUOl7HTbHnYtMauyFZOb5eQ%2FSxJVbSa9bdypC6eLE0fsKELjC6iK%2BUeBKsdQP5D6A%3D"}]}
+cf-ray: a060b56298142d0d-LHR
+alt-svc: h3=":443"; ma=86400
+

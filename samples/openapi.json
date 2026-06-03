@@ -1,0 +1,741 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Aillio Public API",
+    "version": "1.0.0",
+    "description": "Public API for RoastWorld resources."
+  },
+  "paths": {
+    "/api/v3/public/roasts": {
+      "get": {
+        "summary": "Get roasts",
+        "description": "Retrieve a paginated list of roast profiles belonging to the authenticated API token owner.\n\nUnits and data conventions:\n- **All temperatures** are in Celsius (°C)\n- **Weight** values are in grams (g)\n- **Total roast time** is in seconds (s)\n- **dateTime** is timestamp in milliseconds since the Unix epoch.",
+        "security": [{ "ApiTokenAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            },
+            "description": "Page number (default: 1)"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of items per page (default: 20, max: 100)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated roast list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["page", "size", "total", "totalPages", "data"],
+                  "properties": {
+                    "page": { "type": "integer" },
+                    "size": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "totalPages": { "type": "integer" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "uid",
+                          "roastName",
+                          "dateTime",
+                          "updatedAt",
+                          "weightGreen",
+                          "weightRoasted",
+                          "totalRoastTime",
+                          "preheatTemperature",
+                          "serialNumber"
+                        ],
+                        "properties": {
+                          "uid": { "type": "string" },
+                          "roastName": { "type": "string" },
+                          "dateTime": { "type": "integer", "format": "int64" },
+                          "updatedAt": { "type": "integer", "format": "int64" },
+                          "weightGreen": { "type": "integer" },
+                          "weightRoasted": { "type": "integer" },
+                          "totalRoastTime": { "type": "integer" },
+                          "preheatTemperature": { "type": "integer" },
+                          "colorMeterScale": { "type": "string" },
+                          "beanId": { "type": "string" },
+                          "firstCrackTime": {
+                            "type": "number",
+                            "format": "float"
+                          },
+                          "firstCrackTemp": {
+                            "type": "number",
+                            "format": "float"
+                          },
+                          "firstCrackIRTemp": {
+                            "type": "number",
+                            "format": "float"
+                          },
+                          "serialNumber": { "type": "integer" },
+                          "deviceType": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "page": 1,
+                  "size": 20,
+                  "total": 135,
+                  "totalPages": 7,
+                  "data": [
+                    {
+                      "uid": "mockedUID123",
+                      "roastName": "Sample Roast 1",
+                      "preheatTemperature": 310,
+                      "totalRoastTime": 810,
+                      "weightGreen": 956,
+                      "weightRoasted": 812,
+                      "deviceType": "r1",
+                      "dateTime": 1766849131200,
+                      "firstCrackTime": 534,
+                      "firstCrackTemp": 204.05,
+                      "beanId": "mockedBeanID123"
+                    },
+                    {
+                      "uid": "mockedUID456",
+                      "roastName": "Sample Roast 2",
+                      "preheatTemperature": 200,
+                      "totalRoastTime": 240,
+                      "deviceType": "r2",
+                      "dateTime": 1766559479430
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported model type",
+            "content": {
+              "application/json": {
+                "example": { "message": "Unsupported modelType" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": { "message": "Invalid API token" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (e.g., token is revoked, token expired)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "revokedToken": {
+                    "summary": "API token is revoked",
+                    "value": { "message": "This API token is revoked" }
+                  },
+                  "expiredToken": {
+                    "summary": "API token expired",
+                    "value": { "message": "API token expired" }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (daily token or user rate limit exceeded)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "tokenRateLimit": {
+                    "summary": "Daily token rate limit exceeded",
+                    "value": { "message": "Daily token rate limit exceeded" }
+                  },
+                  "userRateLimit": {
+                    "summary": "Daily user rate limit exceeded",
+                    "value": { "message": "Daily user rate limit exceeded" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": { "message": "Internal server error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/public/beans": {
+      "get": {
+        "summary": "Get beans",
+        "description": "Retrieve a paginated list of beans belonging to the authenticated API token owner.\n\nUnits and data conventions:\n- **inStock** value is in grams (g)",
+        "security": [{ "ApiTokenAuth": [] }],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "minimum": 1
+            },
+            "description": "Page number (default: 1)"
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of items per page (default: 20, max: 100)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated bean list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "page": { "type": "integer" },
+                    "size": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "totalPages": { "type": "integer" },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "createdAt": { "type": "string" },
+                          "beanId": { "type": "string" },
+                          "name": { "type": "string" },
+                          "country": { "type": "string" },
+                          "varieties": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          },
+                          "tags": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          },
+                          "process": { "type": "string" },
+                          "farm": { "type": "string" },
+                          "inStock": {
+                            "type": "integer",
+                            "description": "Remaining green bean weight (grams) (can be negative)"
+                          }
+                        },
+                        "required": [
+                          "createdAt",
+                          "beanId",
+                          "name",
+                          "country",
+                          "varieties",
+                          "tags",
+                          "process",
+                          "farm",
+                          "inStock"
+                        ]
+                      }
+                    }
+                  },
+                  "required": ["page", "size", "total", "totalPages", "data"]
+                },
+                "example": {
+                  "page": 1,
+                  "size": 20,
+                  "total": 15,
+                  "totalPages": 1,
+                  "data": [
+                    {
+                      "createdAt": "Jun 18, 2024",
+                      "beanId": "mockedBeanID123",
+                      "name": "Guerrero E-14",
+                      "country": "Mexico",
+                      "process": "Natural",
+                      "farm": "La Estancia",
+                      "varieties": ["Typica", "Bourbon"],
+                      "tags": [],
+                      "inStock": 2000
+                    },
+                    {
+                      "createdAt": "Feb 27, 2025",
+                      "beanId": "mockedBeanID456",
+                      "name": "Garnica Natural",
+                      "country": "Mexico",
+                      "process": "Natural",
+                      "varieties": ["Caturra, Garnica"],
+                      "tags": [],
+                      "inStock": 100
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported model type",
+            "content": {
+              "application/json": {
+                "example": { "message": "Unsupported modelType" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": { "message": "Invalid API token" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (e.g., token is revoked, token expired)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "revokedToken": {
+                    "summary": "API token is revoked",
+                    "value": { "message": "This API token is revoked" }
+                  },
+                  "expiredToken": {
+                    "summary": "API token expired",
+                    "value": { "message": "API token expired" }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (daily token or user rate limit exceeded)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "tokenRateLimit": {
+                    "summary": "Daily token rate limit exceeded",
+                    "value": { "message": "Daily token rate limit exceeded" }
+                  },
+                  "userRateLimit": {
+                    "summary": "Daily user rate limit exceeded",
+                    "value": { "message": "Daily user rate limit exceeded" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": { "message": "Internal server error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/public/roasts/{id}": {
+      "get": {
+        "summary": "Get a single roast by ID",
+        "description": "Retrieve a single roast profile belonging to the authenticated API token owner.\n\nUnits and data conventions:\n- **All temperatures** are in Celsius (°C)\n- **Weight** values are in grams (g)\n- **Total roast time** is in seconds (s)\n- **dateTime and updatedAt** are timestamps in milliseconds since the Unix epoch.\n- **Array measurements** (e.g., beanTemperature, ibtsTemperature, derivatives) are sampled at 2 samples per second. For example, an array of length 6 represents 3 seconds of roasting.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "ID of the roast"
+          }
+        ],
+        "security": [{ "ApiTokenAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Roast found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "uid",
+                    "roastName",
+                    "dateTime",
+                    "updatedAt",
+                    "weightGreen",
+                    "weightRoasted",
+                    "totalRoastTime",
+                    "preheatTemperature",
+                    "beanChargeTemperature",
+                    "drumChargeTemperature",
+                    "beanTemperature",
+                    "ibtsTemperature",
+                    "beanDerivative",
+                    "ibtsDerivative",
+                    "actions",
+                    "humidity",
+                    "ambient",
+                    "ibtsAmbientTemp",
+                    "atmosphericPressure",
+                    "annotationComments",
+                    "indexYellowingStart",
+                    "indexFirstCrackStart",
+                    "indexFirstCrackEnd",
+                    "indexSecondCrackStart",
+                    "indexSecondCrackEnd",
+                    "serialNumber"
+                  ],
+                  "properties": {
+                    "uid": { "type": "string" },
+                    "roastName": { "type": "string" },
+                    "dateTime": { "type": "integer", "format": "int64" },
+                    "updatedAt": { "type": "integer", "format": "int64" },
+                    "weightGreen": { "type": "integer" },
+                    "weightRoasted": { "type": "integer" },
+                    "totalRoastTime": { "type": "integer" },
+                    "preheatTemperature": { "type": "number" },
+                    "beanChargeTemperature": { "type": "number" },
+                    "drumChargeTemperature": { "type": "number" },
+                    "beanTemperature": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "ibtsTemperature": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "beanDerivative": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "ibtsDerivative": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "differentialAirPressure": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "exhaustFanBlowerRpm": {
+                      "type": "array",
+                      "items": { "type": "number" }
+                    },
+                    "actions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": { "type": "string" },
+                          "second": { "type": "integer" },
+                          "setting": { "type": "number" }
+                        }
+                      }
+                    },
+                    "humidity": { "type": "number" },
+                    "ambient": { "type": "number" },
+                    "ibtsAmbientTemp": { "type": "number" },
+                    "atmosphericPressure": { "type": "number" },
+                    "annotationComments": {
+                      "oneOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "comment": { "type": "string" },
+                              "time": {
+                                "type": "object",
+                                "properties": {
+                                  "mm": { "type": "string", "pattern": "^[0-5][0-9]$" },
+                                  "ss": { "type": "string", "pattern": "^[0-5][0-9]$" }
+                                },
+                                "required": ["mm", "ss"]
+                              }
+                            },
+                            "required": ["comment", "time"]
+                          }
+                        },
+                        { "type": "string", "enum": [""] }
+                      ]
+                    },
+                    "colorMeterScale": { "type": "string" },
+                    "beanId": { "type": "string" },
+                    "blendId": { "type": "string" },
+                    "indexYellowingStart": {
+                      "type": "integer",
+                      "description": "Index where yellowing starts. 0 if not marked"
+                    },
+                    "indexFirstCrackStart": {
+                      "type": "integer",
+                      "description": "Index where first crack starts. 0 if not marked"
+                    },
+                    "indexFirstCrackEnd": {
+                      "type": "integer",
+                      "description": "Index where first crack ends. 0 if not marked"
+                    },
+                    "indexSecondCrackStart": {
+                      "type": "integer",
+                      "description": "Index where second crack starts. 0 if not marked"
+                    },
+                    "indexSecondCrackEnd": {
+                      "type": "integer",
+                      "description": "Index where second crack ends. 0 if not marked"
+                    },
+                    "serialNumber": { "type": "integer" },
+                    "deviceType": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "uid": "mockedUID123",
+                  "roastName": "Sample Roast 1",
+                  "dateTime": 1766849131200,
+                  "updatedAt": 1767582832448,
+                  "weightGreen": 950,
+                  "weightRoasted": 812,
+                  "totalRoastTime": 810,
+                  "preheatTemperature": 310,
+                  "beanChargeTemperature": 154.34,
+                  "drumChargeTemperature": 240.87,
+                  "beanTemperature": [219.09, 219.02, 218.96],
+                  "ibtsTemperature": [308.95, 306.83, 304.73],
+                  "beanDerivative": [-6.88, -7.93, -6.6],
+                  "ibtsDerivative": [0, 0, 0],
+                  "differentialAirPressure": [3.45, 5.1, 6.84],
+                  "exhaustFanBlowerRpm": [],
+                  "actions": [
+                    { "type": "Power", "second": 5, "setting": 6 },
+                    { "type": "Blower", "second": 5, "setting": 1 },
+                    { "type": "Drum", "second": 681, "setting": 9 }
+                  ],
+                  "humidity": 0,
+                  "ambient:": 35,
+                  "ibtsAmbientTemp": 27,
+                  "atmosphericPressure": 987.71,
+                  "annotationComments": [{ "comment": "Example comment", "time": { "mm": "00", "ss": "15" } }],
+                  "colorMeterScale": "Roast Vision",
+                  "beanId": "mockedBeanID123",
+                  "indexYellowingStart": 506,
+                  "indexFirstCrackStart": 1068,
+                  "indexFirstCrackEnd": 0,
+                  "indexSecondCrackStart": 0,
+                  "indexSecondCrackEnd": 0,
+                  "serialNumber": 356581729,
+                  "deviceType": "r2"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "example": { "message": "Profile id is required" }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": { "message": "Invalid API token" }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden (e.g., token is revoked, token expired, user not allowed)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "revokedToken": {
+                    "summary": "API token is revoked",
+                    "value": { "message": "This API token is revoked" }
+                  },
+                  "expiredToken": {
+                    "summary": "API token expired",
+                    "value": { "message": "API token expired" }
+                  },
+                  "profileAccess": {
+                    "summary": "Cannot access profile",
+                    "value": { "message": "You cannot access this profile" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Roast not found (e.g., deleted or profile is not found)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "notFound": {
+                    "summary": "Profile not found",
+                    "value": { "message": "Profile not found" }
+                  },
+                  "deletedProfile": {
+                    "summary": "Profile is deleted",
+                    "value": { "message": "This profile has been deleted" }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (daily token or user rate limit exceeded)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "tokenRateLimit": {
+                    "summary": "Daily token rate limit exceeded",
+                    "value": { "message": "Daily token rate limit exceeded" }
+                  },
+                  "userRateLimit": {
+                    "summary": "Daily user rate limit exceeded",
+                    "value": { "message": "Daily user rate limit exceeded" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": { "message": "Internal server error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/public/beans/{id}": {
+      "get": {
+        "summary": "Get a single bean by ID",
+        "description": "Retrieve a single bean belonging to the authenticated API token owner.",
+        "security": [{ "ApiTokenAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" },
+            "description": "Bean ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bean found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["uid", "name", "country"],
+                  "properties": {
+                    "uid": { "type": "string" },
+                    "name": { "type": "string" },
+                    "farm": { "type": "string" },
+                    "region": { "type": "string" },
+                    "country": { "type": "string" },
+                    "process": { "type": "string" },
+                    "description": { "type": "string" },
+                    "varieties": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  }
+                },
+                "example": {
+                  "uid": "mock-bean-uid-123",
+                  "name": "Guerrero E-14",
+                  "farm": "La Estancia",
+                  "region": "Guerrero",
+                  "country": "Mexico",
+                  "process": "Natural",
+                  "description": "description",
+                  "tags": ["Hazelnut", "Milk Chocolate"],
+                  "varieties": ["Typica", "Bourbon"]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "example": { "message": "Invalid API token" }
+              }
+            }
+          },
+          "404": {
+            "description": "Bean not found",
+            "content": {
+              "application/json": {
+                "example": { "error": "Bean not found" }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many requests (daily token or user rate limit exceeded)",
+            "content": {
+              "application/json": {
+                "examples": {
+                  "tokenRateLimit": {
+                    "summary": "Daily token rate limit exceeded",
+                    "value": { "message": "Daily token rate limit exceeded" }
+                  },
+                  "userRateLimit": {
+                    "summary": "Daily user rate limit exceeded",
+                    "value": { "message": "Daily user rate limit exceeded" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "example": { "message": "Internal server error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiTokenAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "Paste your API token here."
+      }
+    }
+  }
+}

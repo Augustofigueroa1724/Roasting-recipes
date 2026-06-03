@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-06-03",
+  "probes": [
+    {"url":"/api/v3/public/roasts?page=1&size=3","note":"no header","http":401,"body":"{\"message\":\"Invalid API token\"}"},
+    {"url":"/api/v3/public/roast","note":"no header","http":401,"body":"{\"message\":\"Invalid API token\"}"},
+    {"url":"/api/v1/public/roasts","http":404},
+    {"url":"/api/v2/public/roasts","http":404},
+    {"variants":["x-api-key","apikey","api-token","x-api-token","token","Authorization: Bearer","x-access-token","?token=","?api_token="],"all_http":401,"note":"every fake token rejected -> a real valid token is required"}
+  ],
+  "frontend_findings": {
+    "app_api_base":"https://api.roast.world/api/v3",
+    "auth_header_name":"api-token",
+    "token_source":"roast.world Settings -> API Tokens (route routes/settings.api-tokens)",
+    "login":"Firebase (VITE_FIREBASE_API_KEY present, site redirects / -> /login)",
+    "app_endpoints_seen":["/api/v3/proxy","/api/v3/logs","/api/v3/profiles"],
+    "enum_hints":["R2Profile=18","OfficialRecipe=19"]
+  }
+}
