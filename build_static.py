@@ -30,7 +30,7 @@ DATA = os.path.join(DOCS, "data")
 PROFILES = os.path.join(DATA, "profiles")
 
 
-META_FIELDS = ["name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType"]
+META_FIELDS = ["name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "referenceRoastUid"]
 
 
 def fetch_all_recipes(max_n: int) -> list[dict]:
@@ -91,59 +91,36 @@ def build_facets(recipes: list[dict]) -> dict:
 def main():
     load_env()
     p = argparse.ArgumentParser(description="Genera el snapshot estático para GitHub Pages")
-    p.add_argument("--meta-limit", type=int, default=5000, help="recetas en el índice de búsqueda (metadatos)")
-    p.add_argument("--profile-limit", type=int, default=250, help="recetas con perfil descargado (para comparar)")
-    p.add_argument("--delay", type=float, default=0.15, help="pausa entre perfiles (s)")
+    p.add_argument("--meta-limit", type=int, default=100000, help="máx. recetas en el índice de búsqueda")
     p.add_argument("--stamp", default="", help="fecha del snapshot (ISO); si vacío, sin fecha")
     args = p.parse_args()
 
-    os.makedirs(PROFILES, exist_ok=True)
+    os.makedirs(DATA, exist_ok=True)
 
     print(f"1) Descargando metadatos de hasta {args.meta_limit} recetas (orden por popularidad)…")
     recipes = fetch_all_recipes(args.meta_limit)
     print(f"   -> {len(recipes)} recetas para el índice de búsqueda")
 
-    n_prof = min(args.profile_limit, len(recipes))
-    print(f"2) Descargando perfiles (Power/temperatura) de las {n_prof} más populares…")
-    with_profile = 0
-    kept: list[dict] = []
-    for i, r in enumerate(recipes, 1):
-        if i > n_prof:
-            r["hasProfile"] = False
-            kept.append(r)
-            continue
-        uid = r["uid"]
-        try:
-            prof = community.recipe_profile(uid)
-            # tomar el grado de tueste del log (más fiable) si falta en el metadato
-            if r.get("roastDegree") in (None, "") and prof.get("roastDegree") is not None:
-                r["roastDegree"] = prof.get("roastDegree")
-            with open(os.path.join(PROFILES, f"{uid}.json"), "w", encoding="utf-8") as fh:
-                json.dump(prof, fh, ensure_ascii=False)
-            r["hasProfile"] = True
-            with_profile += 1
-        except community.CommunityError as exc:
-            r["hasProfile"] = False
-            print(f"   [{i}/{len(recipes)}] {uid} sin perfil: {str(exc)[:50]}")
-        kept.append(r)
-        if i % 25 == 0:
-            print(f"   …{i}/{n_prof} ({with_profile} con perfil)")
-        time.sleep(args.delay)
-
-    print("3) Escribiendo JSON estáticos…")
-    # formato COLUMNAR (sin repetir claves) para que el índice de ~97k pese poco.
-    # uid + metadatos + hasProfile; el frontend deriva roastLevel y la url.
-    fields = ["uid"] + META_FIELDS + ["hasProfile"]
-    rows = [[r.get(f) for f in fields] for r in kept]
+    print("2) Escribiendo JSON estáticos…")
+    # formato COLUMNAR (sin repetir claves). 'ref' = referenceRoastUid: el navegador
+    # baja el log de Firebase Storage (público, CORS *) al vuelo para comparar.
+    # NO se pre-generan perfiles: el frontend los construye en cliente.
+    out_fields = ["uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "ref"]
+    def to_row(r):
+        vals = [r.get(f) for f in out_fields[:-1]]
+        vals.append(r.get("referenceRoastUid"))
+        return vals
+    comparable = sum(1 for r in recipes if r.get("referenceRoastUid"))
+    rows = [to_row(r) for r in recipes]
     with open(os.path.join(DATA, "recipes.json"), "w", encoding="utf-8") as fh:
-        json.dump({"fields": fields, "rows": rows}, fh, ensure_ascii=False)
+        json.dump({"fields": out_fields, "rows": rows}, fh, ensure_ascii=False)
     with open(os.path.join(DATA, "facets.json"), "w", encoding="utf-8") as fh:
-        json.dump(build_facets(kept), fh, ensure_ascii=False)
+        json.dump(build_facets(recipes), fh, ensure_ascii=False)
     with open(os.path.join(DATA, "meta.json"), "w", encoding="utf-8") as fh:
-        json.dump({"count": len(kept), "withProfile": with_profile,
+        json.dump({"count": len(recipes), "comparable": comparable,
                    "generatedAt": args.stamp, "source": "roast.world community"}, fh, ensure_ascii=False)
 
-    print(f"Hecho. {len(kept)} recetas en el índice, {with_profile} con perfil -> {DATA}")
+    print(f"Hecho. {len(recipes)} recetas en el índice, {comparable} comparables (con ref) -> {DATA}")
 
 
 if __name__ == "__main__":

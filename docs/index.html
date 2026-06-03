@@ -192,7 +192,7 @@ function render(allRows) {
         ${r.weight?`<span>⚖️ <b>${r.weight} g</b></span>`:""}
         <span>📌 <b>${(r.downloadCount||0).toLocaleString("es")}</b> guardada${r.downloadCount===1?"":"s"}</span>
         ${r.deviceType?`<span>${r.deviceType}</span>`:""}
-        ${r.hasProfile?"":`<span title="sin perfil para comparar">· sin perfil</span>`}
+        ${r.ref?"":`<span title="sin perfil para comparar">· sin perfil</span>`}
       </div></div>`;
   }).join("");
   rows.forEach(r => { NAMES.set(r.uid, r.name||r.uid); META.set(r.uid, r); });
@@ -224,25 +224,50 @@ function updateBar(){ $("cmp-count").textContent=SEL.size; $("cmpbar").classList
 function syncSelAll(){ const b=$("selall"); if(!CURRENT.length){b.checked=false;b.indeterminate=false;return;} const n=CURRENT.filter(u=>SEL.has(u)).length; b.checked=n===CURRENT.length; b.indeterminate=n>0&&n<CURRENT.length; }
 $("selall").onchange=function(){ const on=this.checked; CURRENT.forEach(uid=>{ if(on)SEL.add(uid);else SEL.delete(uid); const c=$("card-"+uid); if(c){c.classList.toggle("sel",on); const cb=c.querySelector(".pick"); if(cb)cb.checked=on;} }); updateBar(); syncSelAll(); };
 
-// ---- comparativa (perfiles estáticos data/profiles/<uid>.json) ----
+// ---- comparativa: el perfil se baja del log de Firebase Storage AL VUELO ----
 const COLORS=["#d98a3d","#5aa9e0","#7fc97f","#e06a5a","#c792ea","#e0c84a","#56c9c0","#e08bbf"];
+const STORAGE = ref => `https://firebasestorage.googleapis.com/v0/b/testaillio.appspot.com/o/roasts%2F${ref}.json?alt=media`;
+const CTRL = {0:"power",1:"fan",2:"drum"};
+const PROFCACHE = new Map();
 let CMP={profiles:[],metric:"power"}, PINNED=null;
+
+// reconstruye el perfil (power/fan/drum + curva de temperatura + hitos) desde el log
+function parseLog(log, r){
+  const sr = log.sampleRate || 1;
+  const series = {power:[],fan:[],drum:[]};
+  ((log.actions&&log.actions.actionTimeList)||[]).forEach(a=>{
+    const lab=CTRL[a.ctrlType]; const idx=a.index, val=a.value;
+    if(lab && idx!=null && val!=null) series[lab].push([Math.round(idx/sr*10)/10, +val]);
+  });
+  for(const k in series) series[k].sort((x,y)=>x[0]-y[0]);
+  const bt=log.beanTemperature||[], stride=Math.max(1,Math.round(5*sr)), beanTemp=[];
+  for(let i=0;i<bt.length;i+=stride){ if(typeof bt[i]==="number") beanTemp.push([Math.round(i/sr*10)/10, Math.round(bt[i]*100)/100]); }
+  const ms=idx=>(typeof idx==="number"&&idx>0)?Math.round(idx/sr*10)/10:null;
+  return { uid:r.uid, name:r.name, country:r.country, process:r.process,
+    roastDegree:r.roastDegree, roastLevel:r.roastLevel, weight:r.weight, series, beanTemp,
+    milestones:{ yellowing:ms(log.indexYellowingStart), firstCrackStart:ms(log.indexFirstCrackStart), firstCrackEnd:ms(log.indexFirstCrackEnd) },
+    duration: log.totalRoastTime || (sr?bt.length/sr:0), url:r.url };
+}
+
+async function getProfile(uid){
+  if(PROFCACHE.has(uid)) return PROFCACHE.get(uid);
+  const r=META.get(uid)||{}; if(!r.ref) throw new Error("sin ref");
+  const resp=await fetch(STORAGE(r.ref)); if(!resp.ok) throw new Error("log no disponible");
+  const prof=parseLog(await resp.json(), r); PROFCACHE.set(uid,prof); return prof;
+}
 
 async function runCompare(){
   const uids=[...SEL]; if(!uids.length) return;
   PINNED=null;
   $("cmp-title").textContent="Comparando "+uids.length+" recetas…";
-  $("cmp-chart").innerHTML="Cargando perfiles…"; $("cmp-legend").innerHTML=""; $("cmp-summary").innerHTML="";
+  $("cmp-chart").innerHTML="Descargando perfiles de tueste…"; $("cmp-legend").innerHTML=""; $("cmp-summary").innerHTML="";
   $("cmp").showModal();
   const profiles=[], errors=[];
-  await Promise.all(uids.map(async uid=>{
-    try { const p=await fetch("data/profiles/"+uid+".json"); if(!p.ok) throw 0; profiles.push(await p.json()); }
-    catch(e){ errors.push(uid); }
-  }));
+  await Promise.all(uids.map(async uid=>{ try{ profiles.push(await getProfile(uid)); }catch(e){ errors.push(uid); } }));
   CMP.profiles=profiles;
   $("cmp-title").textContent="Comparativa · "+profiles.length+" recetas";
-  $("cmp-summary").innerHTML = errors.length ? `⚠️ ${errors.length} receta(s) sin perfil en el snapshot (no se pueden comparar).` : "";
-  if(!profiles.length){ $("cmp-chart").innerHTML="<div class='note'>Ninguna de las seleccionadas tiene perfil en el snapshot.</div>"; return; }
+  $("cmp-summary").innerHTML = errors.length ? `⚠️ ${errors.length} receta(s) sin perfil disponible.` : "";
+  if(!profiles.length){ $("cmp-chart").innerHTML="<div class='note'>Ninguna de las seleccionadas tiene perfil disponible.</div>"; return; }
   setMetric(CMP.metric);
 }
 
