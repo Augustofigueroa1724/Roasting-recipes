@@ -151,6 +151,36 @@ Todos `required` según el spec.
 
 ---
 
+## Búsqueda de comunidad (descubierta en FASE 2) — NO es la API pública
+
+La búsqueda global de roast.world (la que da cientos de resultados) **no usa**
+`x-api-key` ni la API pública. Usa un proxy a **Elasticsearch** con el **idToken de
+Firebase** del usuario logueado:
+
+```
+POST https://api.roast.world/api/v3/proxy
+Authorization: Bearer <idToken Firebase>      # NO el x-api-key
+Content-Type: application/json
+body: { "modelType": <enum>, "operation": "_search", "body": <query Elasticsearch> }
+```
+
+- **modelType (enum):** Bean=0, Profile=1, **Recipe=2**, Config=3, StashedRoast=4,
+  StashedRecipe=5, … R2Profile=18, OfficialRecipe=19.
+- **Respuesta:** formato Elasticsearch → `data.hits.hits[]` con `_id`, `_score`, `_source`.
+- **_source de una receta:** `name, country, process, roastDegree, weight,
+  downloadCount, userId, referenceRoastUid, updatedAt`.
+- **Query de "discover":** excluye `deleted:1` e `isPrivate:1`; búsqueda =
+  `wildcard name:"<q>*"` + `multi_match best_fields fuzziness AUTO` sobre `name`;
+  filtros por `country.keyword`, `process.keyword`, `roastDegree`, `deviceType`,
+  rango `weight`; orden por `downloadCount` (popularidad) o `*.keyword`.
+- **Token:** el `idToken` se obtiene del loader raíz de cualquier página `_app`
+  (campo `root.token` en `window.__remixContext`), accesible mandando la cookie
+  `__session` (sesión Firebase, ~7 días). El idToken capturado dura ~7 días.
+  ⚠️ Es una credencial sensible: va en `.env` (`ROAST_FIREBASE_TOKEN`), nunca en el repo.
+
+> Esto es lo que hay que usar para buscar en el catálogo global (FASE 2 ampliada /
+> FASE 3 "otras fuentes"). La API pública `x-api-key` solo ve el contenido propio.
+
 ## Siguiente paso → FASE 1 (indexador)
 
 Con el esquema fijado, el indexador puede:

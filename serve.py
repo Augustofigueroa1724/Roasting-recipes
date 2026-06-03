@@ -22,6 +22,7 @@ import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import community
 from enrich import enrich_roast
 
 DB_PATH = "catalog.db"
@@ -176,18 +177,26 @@ class Handler(BaseHTTPRequestHandler):
         route = parsed.path
         params = parse_qs(parsed.query)
 
-        if route == "/" or route == "/index.html":
-            self._file(os.path.join(WEB_DIR, "index.html"), "text/html; charset=utf-8")
-        elif route == "/api/facets":
-            self._json(build_facets(load_roasts()))
-        elif route == "/api/search":
-            self._json({"results": search(load_roasts(), params)})
-        elif route.startswith("/api/roast/"):
-            uid = route[len("/api/roast/"):]
-            detail = roast_detail(uid)
-            self._json(detail if detail else {"error": "not found"}, 200 if detail else 404)
-        else:
-            self._json({"error": "not found"}, 404)
+        def flat(d):  # parse_qs -> dict de strings simples
+            return {k: (v[0] if v else "") for k, v in d.items()}
+
+        try:
+            if route == "/" or route == "/index.html":
+                self._file(os.path.join(WEB_DIR, "index.html"), "text/html; charset=utf-8")
+            elif route == "/api/facets":
+                self._json(community.facets())
+            elif route == "/api/search":
+                self._json(community.search(flat(params)))
+            elif route.startswith("/api/roast/"):
+                uid = route[len("/api/roast/"):]
+                detail = community.recipe_detail(uid)
+                self._json(detail if detail else {"error": "not found"}, 200 if detail else 404)
+            elif route == "/api/local/search":  # acceso al catálogo propio (los 4 roasts)
+                self._json({"results": search(load_roasts(), params)})
+            else:
+                self._json({"error": "not found"}, 404)
+        except community.CommunityError as exc:
+            self._json({"error": str(exc)}, 502)
 
     def log_message(self, fmt, *args):  # silenciar logs ruidosos
         return
@@ -195,17 +204,19 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     global DB_PATH
+    from roast_index import load_env
+    load_env()
     p = argparse.ArgumentParser(description="Servidor de busqueda de recetas (FASE 2)")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--db", default=DB_PATH)
     args = p.parse_args()
     DB_PATH = args.db
 
-    if not os.path.exists(DB_PATH):
-        print(f"AVISO: no existe {DB_PATH}. Ejecuta primero:  python roast_index.py")
+    if not os.environ.get("ROAST_FIREBASE_TOKEN"):
+        print("AVISO: falta ROAST_FIREBASE_TOKEN en .env -> la búsqueda de comunidad fallará.")
 
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
-    print(f"Buscador en  http://localhost:{args.port}   (db={DB_PATH})")
+    print(f"Buscador (catálogo de COMUNIDAD) en  http://localhost:{args.port}")
     print("Ctrl+C para parar.")
     try:
         server.serve_forever()
