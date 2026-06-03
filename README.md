@@ -17,7 +17,31 @@ recetas para ver de un vistazo si son parecidas o cuál se separa.
 | 1 | Indexador de **tu** catálogo propio → `catalog.db` (`roast_index.py`) | ✅ |
 | 2 | Buscador del catálogo **global** de comunidad (`serve.py` + `community.py` + `web/`) | ✅ |
 | 2.5 | Comparativa de perfiles de Power/temperatura entre recetas | ✅ |
+| Web | Sitio público estático en GitHub Pages (snapshot del catálogo) | ✅ |
 | 3 | 0 resultados → buscar en otras fuentes → archivo importable a roast.world/RoasTime | ⏳ pendiente |
+
+## Web pública (GitHub Pages)
+
+🌐 **https://augustofigueroa1724.github.io/Roasting-recipes/**
+
+Versión **estática** servida desde `docs/` (sin backend ni token en producción):
+
+- `build_static.py` genera, **usando el token solo en build**, un snapshot del
+  catálogo completo (~97k recetas) en `docs/data/recipes.json` (formato columnar
+  `{fields, rows}`, vía `search_after`), `facets.json` y `meta.json`.
+- `docs/index.html` busca/filtra en el navegador (multi-palabra, como roast.world)
+  y, al **comparar**, descarga el log de cada tueste **al vuelo** desde Firebase
+  Storage (URL pública, CORS abierto) y lo parsea en cliente. ~83% de las recetas
+  son comparables (las que tienen un tueste asociado); el resto se marca «sin perfil».
+
+Regenerar el snapshot (requiere `ROAST_FIREBASE_TOKEN` válido en `.env`):
+
+```bash
+python3 build_static.py --meta-limit 100000 --stamp <YYYY-MM-DD>
+git add -A docs/ && git commit -m "Actualiza snapshot" && git push
+```
+
+Pages está configurado en Settings → Pages: rama `main`, carpeta `/docs`.
 
 ## Cómo funciona (fuentes de datos)
 
@@ -84,6 +108,8 @@ Abre `http://localhost:8000` (en Codespaces, pestaña **PORTS** → puerto 8000)
 | `serve.py` | Servidor HTTP (stdlib): sirve la web y la API JSON |
 | `web/index.html` | Interfaz de una página (vanilla JS + SVG, sin librerías) |
 | `enrich.py` | Derivación de criterios del catálogo propio |
+| `build_static.py` | Genera el snapshot estático del catálogo para GitHub Pages |
+| `docs/` | Sitio público estático (GitHub Pages): `index.html` + `data/` |
 | `SCHEMA.md` | Esquema y endpoints (documentados y no documentados) |
 | `samples/` | Respuestas reales de ejemplo + spec OpenAPI |
 
@@ -100,5 +126,8 @@ Abre `http://localhost:8000` (en Codespaces, pestaña **PORTS** → puerto 8000)
 
 - Los tokens (`ROAST_FIREBASE_TOKEN` y `ROAST_API_TOKEN`) **caducan**; si el buscador
   da error de autorización, renueva el token en `.env`.
-- Los perfiles de tueste descargados se **cachean** en `catalog.db`
-  (tabla `recipe_profiles`, TTL 7 días).
+- Los perfiles de tueste descargados (servidor local) se **cachean** en `catalog.db`
+  (tabla `recipe_profiles`, TTL 7 días). La web pública no usa caché: baja el log al vuelo.
+- La métrica de popularidad es **«veces guardada» (stash)**: `downloadCount` =
+  nº de veces que la receta se ha añadido a un stash (verificado contra el índice
+  `StashedRecipe`).
