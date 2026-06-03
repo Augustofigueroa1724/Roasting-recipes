@@ -48,6 +48,25 @@
   .dlg-body a { color:var(--accent); }
   .x { background:none; border:0; color:var(--muted); font-size:20px; cursor:pointer; }
   .note { font-size:11px; color:var(--muted); margin-top:4px; font-style:italic; }
+  .card { position:relative; }
+  .card .pick { position:absolute; top:12px; right:12px; width:18px; height:18px; cursor:pointer; accent-color:var(--accent); }
+  .card.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .cmpbar { position:fixed; bottom:0; left:0; right:0; background:#221913; border-top:1px solid var(--accent);
+            padding:12px 24px; display:none; justify-content:space-between; align-items:center; z-index:50; }
+  .cmpbar.show { display:flex; }
+  .cmpbar .lbl { font-size:14px; }
+  .cmpbar button { margin-left:8px; }
+  .cmpbar .btn { width:auto; margin-top:0; padding:9px 16px; display:inline-block; }
+  #cmp { max-width:880px; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .legend i { width:14px; height:3px; display:inline-block; border-radius:2px; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
+  .summary { background:#221913; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
+  .summary .out { color:var(--accent); font-weight:600; }
+  .tabs { display:flex; gap:8px; margin-bottom:10px; }
+  .tabs button { background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:5px 12px; cursor:pointer; font-size:13px; }
+  .tabs button.on { background:var(--accent); color:#1b1410; border-color:var(--accent); }
 </style>
 </head>
 <body>
@@ -97,6 +116,30 @@
   </div>
   <div class="dlg-body" id="d-body"></div>
 </dialog>
+
+<dialog id="cmp">
+  <div class="dlg-head">
+    <strong id="cmp-title">Comparativa de recetas</strong>
+    <button class="x" onclick="document.getElementById('cmp').close()">×</button>
+  </div>
+  <div class="dlg-body">
+    <div class="tabs">
+      <button id="tab-power" class="on" onclick="setMetric('power')">Power (1–9)</button>
+      <button id="tab-temp" onclick="setMetric('beanTemp')">Temperatura grano</button>
+    </div>
+    <div class="legend" id="cmp-legend"></div>
+    <div id="cmp-chart"></div>
+    <div class="summary" id="cmp-summary"></div>
+  </div>
+</dialog>
+
+<div class="cmpbar" id="cmpbar">
+  <span class="lbl"><b id="cmp-count">0</b> recetas seleccionadas para comparar</span>
+  <span>
+    <button class="btn secondary" onclick="clearSelection()">Quitar selección</button>
+    <button class="btn" id="cmp-go">Comparar selección</button>
+  </span>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -157,7 +200,11 @@ function render(rows, total, relation) {
     if (r.country) tags.push(`<span class="tag">${r.country}</span>`);
     if (r.process) tags.push(`<span class="tag">${r.process}</span>`);
     if (r.roastLevel) tags.push(`<span class="tag level">${r.roastLevel}</span>`);
-    return `<div class="card" onclick="openDetail('${r.uid}')">
+    const checked = SEL.has(r.uid) ? "checked" : "";
+    const selCls = SEL.has(r.uid) ? " sel" : "";
+    return `<div class="card${selCls}" id="card-${r.uid}" onclick="openDetail('${r.uid}')">
+      <input type="checkbox" class="pick" ${checked} title="Seleccionar para comparar"
+             onclick="event.stopPropagation(); toggleSel('${r.uid}', this.checked)">
       <h3>${r.name || "(sin nombre)"}</h3>
       <div class="tags">${tags.join("")}</div>
       <div class="metrics">
@@ -166,6 +213,25 @@ function render(rows, total, relation) {
         ${r.deviceType ? `<span>${r.deviceType}</span>` : ""}
       </div></div>`;
   }).join("");
+  rows.forEach(r => NAMES.set(r.uid, r.name || r.uid));
+}
+
+// ---- selección para comparar ----
+const SEL = new Set();
+const NAMES = new Map();
+function toggleSel(uid, on) {
+  if (on) SEL.add(uid); else SEL.delete(uid);
+  const card = $("card-" + uid);
+  if (card) card.classList.toggle("sel", on);
+  updateBar();
+}
+function clearSelection() {
+  SEL.forEach(uid => { const c = $("card-"+uid); if (c){ c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb) cb.checked=false; } });
+  SEL.clear(); updateBar();
+}
+function updateBar() {
+  $("cmp-count").textContent = SEL.size;
+  $("cmpbar").classList.toggle("show", SEL.size > 0);
 }
 
 async function openDetail(uid) {
@@ -187,6 +253,117 @@ async function openDetail(uid) {
     + `<div class="note">La curva completa y el archivo importable a roast.world/RoasTime llegarán en la FASE 3.</div>`;
   $("detail").showModal();
 }
+
+// ---- comparativa ----
+const COLORS = ["#d98a3d","#5aa9e0","#7fc97f","#e06a5a","#c792ea","#e0c84a","#56c9c0","#e08bbf"];
+let CMP = { profiles: [], metric: "power" };
+
+async function runCompare() {
+  const uids = [...SEL];
+  if (!uids.length) return;
+  $("cmp-title").textContent = "Comparando " + uids.length + " recetas…";
+  $("cmp-chart").innerHTML = "Descargando perfiles (puede tardar unos segundos)…";
+  $("cmp-legend").innerHTML = ""; $("cmp-summary").innerHTML = "";
+  $("cmp").showModal();
+  let data;
+  try { data = await jget("/api/compare?uids=" + uids.join(",")); }
+  catch (e) { $("cmp-chart").innerHTML = "<span class='out'>Error: " + e.message + "</span>"; return; }
+  CMP.profiles = data.profiles || [];
+  $("cmp-title").textContent = "Comparativa · " + CMP.profiles.length + " recetas";
+  if (data.errors && data.errors.length)
+    $("cmp-summary").innerHTML = data.errors.map(e => `⚠️ ${e.uid}: ${e.error}`).join("<br>");
+  setMetric(CMP.metric);
+}
+
+function setMetric(m) {
+  CMP.metric = m;
+  $("tab-power").classList.toggle("on", m === "power");
+  $("tab-temp").classList.toggle("on", m === "beanTemp");
+  drawChart();
+  drawSummary();
+}
+
+function seriesOf(p, m) { return m === "power" ? (p.series && p.series.power) || [] : p.beanTemp || []; }
+
+function drawChart() {
+  const W = 820, H = 360, pad = 44;
+  const m = CMP.metric;
+  const all = CMP.profiles.map(p => seriesOf(p, m)).filter(s => s.length);
+  if (!all.length) { $("cmp-chart").innerHTML = "<div class='note'>Sin datos de " + m + " para estas recetas.</div>"; $("cmp-legend").innerHTML=""; return; }
+  const maxT = Math.max(...all.flat().map(p => p[0]), 1);
+  let minY = Math.min(...all.flat().map(p => p[1]));
+  let maxY = Math.max(...all.flat().map(p => p[1]));
+  if (m === "power") { minY = 0; maxY = 9; } else { minY = Math.floor(minY/10)*10; maxY = Math.ceil(maxY/10)*10; }
+  const x = t => pad + (t / maxT) * (W - pad - 10);
+  const y = v => H - pad - ((v - minY) / (maxY - minY || 1)) * (H - pad - 14);
+  const step = m === "power";  // power = escalonado; temperatura = lineal
+
+  const parts = [];
+  // ejes / rejilla
+  for (let i = 0; i <= 5; i++) {
+    const gy = pad + i * (H - pad - 14) / 5;
+    const val = (maxY - i * (maxY - minY) / 5);
+    parts.push(`<line x1="${pad}" y1="${gy}" x2="${W-10}" y2="${gy}" stroke="#3a2c22"/>`);
+    parts.push(`<text x="6" y="${gy+4}" fill="#b09c8a" font-size="11">${Math.round(val)}</text>`);
+  }
+  for (let s = 0; s <= maxT; s += Math.max(60, Math.round(maxT/6/60)*60)) {
+    parts.push(`<text x="${x(s)}" y="${H-pad+16}" fill="#b09c8a" font-size="11" text-anchor="middle">${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}</text>`);
+  }
+  // hitos 1C (líneas verticales por receta, tenues)
+  CMP.profiles.forEach((p, i) => {
+    const fc = p.milestones && p.milestones.firstCrackStart;
+    if (fc && fc <= maxT) parts.push(`<line x1="${x(fc)}" y1="${pad}" x2="${x(fc)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`);
+  });
+  // curvas
+  CMP.profiles.forEach((p, i) => {
+    const s = seriesOf(p, m); if (!s.length) return;
+    const col = COLORS[i % COLORS.length];
+    let d = "";
+    s.forEach((pt, j) => {
+      const px = x(pt[0]), py = y(pt[1]);
+      if (j === 0) d += `M ${px} ${py}`;
+      else if (step) d += ` H ${px} V ${py}`;   // escalón
+      else d += ` L ${px} ${py}`;
+    });
+    parts.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`);
+  });
+  parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
+  parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
+  parts.push(`<text x="${W/2}" y="${H-6}" fill="#b09c8a" font-size="11" text-anchor="middle">tiempo (min:seg) · líneas punteadas = 1er crack</text>`);
+
+  $("cmp-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
+  $("cmp-legend").innerHTML = CMP.profiles.map((p,i) =>
+    `<span><i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}</span>`).join("");
+}
+
+// resumen: detecta la receta que más se separa (por Power medio y por momento de 1C)
+function drawSummary() {
+  const ps = CMP.profiles.filter(p => seriesOf(p, "power").length);
+  if (ps.length < 2) { $("cmp-summary").innerHTML = ""; return; }
+  // power medio ponderado por tiempo
+  const avgPower = p => {
+    const s = p.series.power; if (s.length < 2) return s[0] ? s[0][1] : 0;
+    let area = 0, T = p.duration || s[s.length-1][0];
+    for (let i = 0; i < s.length; i++) {
+      const t0 = s[i][0], t1 = (i+1 < s.length ? s[i+1][0] : T);
+      area += s[i][1] * (t1 - t0);
+    }
+    return T ? area / T : 0;
+  };
+  const rows = ps.map(p => ({ name: p.name || p.uid, ap: avgPower(p), fc: p.milestones && p.milestones.firstCrackStart, dur: p.duration }));
+  const meanAp = rows.reduce((a,r)=>a+r.ap,0)/rows.length;
+  const out = rows.slice().sort((a,b)=>Math.abs(b.ap-meanAp)-Math.abs(a.ap-meanAp))[0];
+  const fcs = rows.filter(r=>r.fc).map(r=>r.fc);
+  const fcSpread = fcs.length ? Math.round(Math.max(...fcs)-Math.min(...fcs)) : null;
+  const apSpread = (Math.max(...rows.map(r=>r.ap))-Math.min(...rows.map(r=>r.ap)));
+  let verdict = apSpread < 0.8 ? "Perfiles de Power <b>muy parecidos</b> entre sí."
+    : `La que más se separa en Power es <span class="out">${out.name}</span> (Power medio ${out.ap.toFixed(1)} vs media ${meanAp.toFixed(1)}).`;
+  $("cmp-summary").innerHTML =
+    `${verdict}<br>Power medio: ${rows.map(r=>`${r.name.slice(0,22)}: <b>${r.ap.toFixed(1)}</b>`).join(" · ")}.`
+    + (fcSpread!=null ? `<br>1er crack varía <b>${fcSpread}s</b> entre las recetas (${fcs.map(f=>Math.floor(f/60)+":"+String(f%60).padStart(2,"0")).join(", ")}).` : "");
+}
+
+$("cmp-go").onclick = runCompare;
 
 $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });

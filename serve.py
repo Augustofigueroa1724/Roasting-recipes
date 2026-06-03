@@ -191,6 +191,12 @@ class Handler(BaseHTTPRequestHandler):
                 uid = route[len("/api/roast/"):]
                 detail = community.recipe_detail(uid)
                 self._json(detail if detail else {"error": "not found"}, 200 if detail else 404)
+            elif route.startswith("/api/profile/"):
+                uid = route[len("/api/profile/"):]
+                self._json(community.recipe_profile(uid))
+            elif route == "/api/compare":
+                uids = [u for u in (flat(params).get("uids", "").split(",")) if u]
+                self._json(community.compare(uids))
             elif route == "/api/local/search":  # acceso al catálogo propio (los 4 roasts)
                 self._json({"results": search(load_roasts(), params)})
             else:

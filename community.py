@@ -13,11 +13,15 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 import urllib.error
 import urllib.request
 
 PROXY_URL = "https://api.roast.world/api/v3/proxy"
+SITE_BASE = "https://roast.world"
+PROFILE_DB = "catalog.db"          # cache de perfiles descargados
+PROFILE_TTL = 7 * 24 * 3600        # 7 días
 MODEL_RECIPE = 2  # enum modelType (ver SCHEMA.md)
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
@@ -199,3 +203,161 @@ def facets(force: bool = False) -> dict:
     }
     _FACET_CACHE.update(at=now, data=data)
     return data
+
+
+# --------------------------------------------------------------------------- #
+# Perfil de tueste (Power 1-9 + curva real de temperatura) — comparativa (FASE 2.5)
+#
+# El log COMPLETO del tueste (curvas + acciones de Power/Fan/Drum) está en Firebase
+# Storage, en una URL PÚBLICA (sin auth). El campo `url` de ese log lo da el índice
+# de roasts (proxy modelType 1) filtrando por recipeID. Flujo:
+#   recipe.uid --(proxy mt=1)--> roast.url (storage) --(GET público)--> log completo.
+# --------------------------------------------------------------------------- #
+# ctrlType dentro de actions.actionTimeList del log de Storage (derivado de datos).
+CTRL_LABELS = {0: "power", 1: "fan", 2: "drum"}
+
+
+def _to_int(v):
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _roast_url_for_recipe(recipe_uid: str, reference_roast_uid: str | None) -> tuple[str | None, dict]:
+    """Devuelve (url_storage, _source) del log de tueste asociado a la receta."""
+    should = [{"term": {"recipeID.keyword": recipe_uid}}]
+    if reference_roast_uid:
+        should.append({"term": {"_id": reference_roast_uid}})
+    body = {"modelType": 1, "operation": "_search",
+            "body": {"size": 5, "query": {"bool": {"should": should, "minimum_should_match": 1}}}}
+    hits = _post(body).get("hits", {}).get("hits", [])
+    # preferir el roast cuyo recipeID coincide con la receta
+    best = next((h for h in hits if h.get("_source", {}).get("recipeID") == recipe_uid), None)
+    best = best or (hits[0] if hits else None)
+    if not best:
+        return None, {}
+    return best["_source"].get("url"), best["_source"]
+
+
+def _fetch_storage(url: str, timeout: int = 30) -> dict:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        raise CommunityError(f"HTTP {exc.code} al descargar el log de tueste")
+    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+        raise CommunityError(f"no se pudo leer el log de tueste: {exc}")
+
+
+def _downsample(curve: list, sample_rate: float, step_s: float = 5.0) -> list:
+    """Reduce una curva (1 punto/sample) a ~1 punto cada step_s segundos: [[t,valor],...]."""
+    if not curve or not sample_rate:
+        return []
+    stride = max(1, int(round(step_s * sample_rate)))
+    out = []
+    for i in range(0, len(curve), stride):
+        v = curve[i]
+        if isinstance(v, (int, float)):
+            out.append([round(i / sample_rate, 1), round(v, 2)])
+    return out
+
+
+def build_profile_from_log(recipe_meta: dict, log: dict) -> dict:
+    """Construye el perfil comparable a partir del log de Storage."""
+    sr = log.get("sampleRate") or 1
+    series = {name: [] for name in ("power", "fan", "drum")}
+    for a in log.get("actions", {}).get("actionTimeList", []):
+        label = CTRL_LABELS.get(a.get("ctrlType"))
+        idx = _to_int(a.get("index"))
+        val = _to_int(a.get("value"))
+        if label and idx is not None and val is not None:
+            series[label].append([round(idx / sr, 1), val])
+    for s in series.values():
+        s.sort(key=lambda p: p[0])
+
+    def ms_time(idx):
+        return round(idx / sr, 1) if isinstance(idx, int) and idx > 0 else None
+
+    return {
+        "uid": recipe_meta.get("uid"),
+        "name": recipe_meta.get("name") or log.get("roastName"),
+        "country": recipe_meta.get("country") or None,
+        "process": recipe_meta.get("process") or None,
+        "roastDegree": log.get("roastDegree"),
+        "roastLevel": ROAST_DEGREE_LABELS.get(log.get("roastDegree")),
+        "weight": recipe_meta.get("weight"),
+        "totalRoastTime": log.get("totalRoastTime"),
+        "sampleRate": sr,
+        "series": series,                                   # power/fan/drum: [[seg, valor1-9]]
+        "beanTemp": _downsample(log.get("beanTemperature", []), sr),  # curva real [[seg,°C]]
+        "milestones": {
+            "yellowing": ms_time(log.get("indexYellowingStart")),
+            "firstCrackStart": ms_time(log.get("indexFirstCrackStart")),
+            "firstCrackEnd": ms_time(log.get("indexFirstCrackEnd")),
+        },
+        "duration": log.get("totalRoastTime") or (len(log.get("beanTemperature", [])) / sr if sr else 0),
+        "url": f"{SITE_BASE}/recipes/{recipe_meta.get('uid')}",
+    }
+
+
+def _cache_get(uid: str) -> dict | None:
+    try:
+        conn = sqlite3.connect(PROFILE_DB)
+        conn.execute("CREATE TABLE IF NOT EXISTS recipe_profiles "
+                     "(uid TEXT PRIMARY KEY, fetchedAt INTEGER, data TEXT)")
+        row = conn.execute("SELECT fetchedAt, data FROM recipe_profiles WHERE uid=?", (uid,)).fetchone()
+        conn.close()
+        if row and time.time() - row[0] < PROFILE_TTL:
+            return json.loads(row[1])
+    except sqlite3.Error:
+        pass
+    return None
+
+
+def _cache_put(uid: str, data: dict) -> None:
+    try:
+        conn = sqlite3.connect(PROFILE_DB)
+        conn.execute("CREATE TABLE IF NOT EXISTS recipe_profiles "
+                     "(uid TEXT PRIMARY KEY, fetchedAt INTEGER, data TEXT)")
+        conn.execute("INSERT OR REPLACE INTO recipe_profiles VALUES (?,?,?)",
+                     (uid, int(time.time()), json.dumps(data, ensure_ascii=False)))
+        conn.commit()
+        conn.close()
+    except sqlite3.Error:
+        pass
+
+
+def recipe_profile(uid: str, reference_roast_uid: str | None = None, use_cache: bool = True) -> dict:
+    if use_cache:
+        cached = _cache_get(uid)
+        if cached:
+            return cached
+    # 1) localizar la receta (metadatos) si no nos pasaron el referenceRoastUid
+    meta = {"uid": uid}
+    if reference_roast_uid is None:
+        rd = recipe_detail(uid)
+        if rd:
+            meta = rd
+            reference_roast_uid = rd.get("referenceRoastUid")
+    # 2) obtener la URL del log de tueste (Storage) vía el índice de roasts
+    storage_url, roast_src = _roast_url_for_recipe(uid, reference_roast_uid)
+    if not storage_url:
+        raise CommunityError(f"la receta {uid} no tiene un log de tueste asociado para comparar")
+    # 3) descargar el log público y construir el perfil
+    log = _fetch_storage(storage_url)
+    profile = build_profile_from_log(meta, log)
+    _cache_put(uid, profile)
+    return profile
+
+
+def compare(uids: list[str]) -> dict:
+    """Descarga (con caché) los perfiles de varias recetas para superponerlos."""
+    profiles, errors = [], []
+    for uid in uids:
+        try:
+            profiles.append(recipe_profile(uid))
+        except CommunityError as exc:
+            errors.append({"uid": uid, "error": str(exc)})
+    return {"profiles": profiles, "errors": errors}
