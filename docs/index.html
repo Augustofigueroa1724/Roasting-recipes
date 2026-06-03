@@ -130,11 +130,20 @@
 const $ = id => document.getElementById(id);
 const FILTERS = ["country","process","level","device"];
 let ALL = [];   // todas las recetas del snapshot
+const ROAST_DEGREE_LABELS = {0:"Very light (Cinnamon)",1:"Light (City)",2:"Medium light (City+)",3:"Medium (Full city)",4:"Medium dark (Full city+)",5:"Dark (Vienna)",6:"Very dark (French)"};
 function showError(t){ $("msg").innerHTML = `<div class="error">⚠️ ${t}</div>`; }
 
 async function loadData() {
   try {
-    ALL = await (await fetch("data/recipes.json")).json();
+    const raw = await (await fetch("data/recipes.json")).json();
+    // formato columnar {fields, rows} -> objetos; derivar roastLevel y url
+    const F = raw.fields;
+    ALL = raw.rows.map(row => {
+      const o = {}; F.forEach((f,i)=>o[f]=row[i]);
+      o.roastLevel = ROAST_DEGREE_LABELS[o.roastDegree] || null;
+      o.url = "https://roast.world/recipes/" + o.uid;
+      return o;
+    });
     const f = await (await fetch("data/facets.json")).json();
     FILTERS.forEach(k => (f[k]||[]).forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; $(k).appendChild(o); }));
     try { const m = await (await fetch("data/meta.json")).json();
@@ -144,11 +153,13 @@ async function loadData() {
 
 function fmtTime(s){ if(s==null) return "—"; const m=Math.floor(s/60),x=Math.round(s%60); return `${m}:${String(x).padStart(2,"0")}`; }
 
+const MAX_RENDER = 120;
 function doSearch() {
-  const q = $("q").value.trim().toLowerCase();
+  const terms = $("q").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const fc = {}; FILTERS.forEach(k => fc[k] = $(k).value);
   let rows = ALL.filter(r => {
-    if (q && !(r.name||"").toLowerCase().includes(q)) return false;
+    const name = (r.name||"").toLowerCase();
+    if (terms.length && !terms.every(t => name.includes(t))) return false;  // todas las palabras
     if (fc.country && r.country !== fc.country) return false;
     if (fc.process && r.process !== fc.process) return false;
     if (fc.level && r.roastLevel !== fc.level) return false;
@@ -160,8 +171,11 @@ function doSearch() {
   render(rows);
 }
 
-function render(rows) {
-  $("count").textContent = rows.length + (rows.length===1?" receta":" recetas");
+function render(allRows) {
+  const total = allRows.length;
+  const rows = allRows.slice(0, MAX_RENDER);
+  $("count").textContent = total === 0 ? "0 recetas"
+    : (total > rows.length ? `${rows.length} de ${total.toLocaleString("es")} recetas` : `${total} receta${total===1?"":"s"}`);
   const list = $("list");
   if (!rows.length) { list.innerHTML = `<div class="empty">Sin resultados para estos criterios.</div>`; $("selall-wrap").style.display="none"; CURRENT=[]; syncSelAll(); return; }
   list.innerHTML = rows.map(r => {
