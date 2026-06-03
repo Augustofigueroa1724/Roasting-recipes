@@ -101,7 +101,7 @@
 
     <label for="sortBy">Ordenar por</label>
     <select id="sortBy">
-      <option value="popularity">Popularidad (descargas)</option>
+      <option value="popularity">Popularidad (veces guardada)</option>
       <option value="updatedAt">Más recientes</option>
     </select>
 
@@ -221,7 +221,7 @@ function render(rows, total, relation) {
       <div class="tags">${tags.join("")}</div>
       <div class="metrics">
         ${r.weight ? `<span>⚖️ <b>${r.weight} g</b></span>` : ""}
-        <span>⬇️ <b>${(r.downloadCount||0).toLocaleString("es")}</b> descargas</span>
+        <span>📌 <b>${(r.downloadCount||0).toLocaleString("es")}</b> guardada${(r.downloadCount===1)?"":"s"}</span>
         ${r.deviceType ? `<span>${r.deviceType}</span>` : ""}
       </div></div>`;
   }).join("");
@@ -277,7 +277,7 @@ async function openDetail(uid) {
     ["Proceso", r.process || "—"],
     ["Nivel de tueste", r.roastLevel || (r.roastDegree != null ? "grado " + r.roastDegree : "—")],
     ["Peso", r.weight != null ? r.weight + " g" : "—"],
-    ["Descargas", (r.downloadCount || 0).toLocaleString("es")],
+    ["Veces guardada (stash)", (r.downloadCount || 0).toLocaleString("es")],
     ["Dispositivo", r.deviceType || "—"],
     ["Autor (userId)", r.userId || "—"],
     ["Ver en roast.world", `<a href="${r.url}" target="_blank" rel="noopener">abrir receta ↗</a>`],

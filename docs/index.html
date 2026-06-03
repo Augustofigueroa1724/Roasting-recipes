@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buscador de recetas de tueste · roast.world (snapshot)</title>
+<style>
+  :root { --bg:#1b1410; --card:#2a201a; --ink:#f3e9df; --muted:#b09c8a; --accent:#d98a3d; --line:#3a2c22; --bad:#e06a5a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:20px 24px; border-bottom:1px solid var(--line); }
+  h1 { margin:0; font-size:20px; }
+  .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  .wrap { display:grid; grid-template-columns: 280px 1fr; gap:0; min-height:calc(100vh - 70px); }
+  .filters { padding:20px 24px; border-right:1px solid var(--line); }
+  .results { padding:20px 24px; }
+  label { display:block; font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:14px 0 5px; }
+  input[type=text], select { width:100%; padding:9px 10px; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; font-size:14px; }
+  input[type=text]:focus, select:focus { outline:none; border-color:var(--accent); }
+  .btn { margin-top:18px; width:100%; padding:10px; background:var(--accent); color:#1b1410; border:0; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; }
+  .btn.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
+  .count { color:var(--muted); font-size:13px; }
+  .resbar { display:flex; align-items:center; gap:16px; margin-bottom:14px; }
+  #selall-wrap { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink); cursor:pointer; user-select:none; margin-left:auto; }
+  #selall { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
+  .card { position:relative; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:12px; cursor:pointer; transition:border-color .15s; }
+  .card:hover { border-color:var(--accent); }
+  .card.sel { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .card .pick { position:absolute; top:12px; right:12px; width:18px; height:18px; cursor:pointer; accent-color:var(--accent); }
+  .card h3 { margin:0 0 6px; font-size:16px; }
+  .tags { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .tag { font-size:11px; padding:3px 8px; border-radius:20px; background:#3a2c22; color:var(--ink); }
+  .tag.level { background:#4a3214; color:var(--accent); }
+  .metrics { display:flex; flex-wrap:wrap; gap:14px; font-size:13px; color:var(--muted); margin-top:6px; }
+  .metrics b { color:var(--ink); font-weight:600; }
+  .empty { color:var(--muted); padding:40px 0; text-align:center; }
+  .error { background:#3a1f1a; border:1px solid var(--bad); color:#f0c4bd; padding:12px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; }
+  dialog { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:12px; max-width:560px; width:90%; padding:0; }
+  #cmp { max-width:880px; }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  .dlg-head { padding:18px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+  .dlg-body { padding:18px 20px; }
+  .dlg-body table { width:100%; border-collapse:collapse; font-size:13px; }
+  .dlg-body td { padding:5px 0; border-bottom:1px solid var(--line); }
+  .dlg-body td:first-child { color:var(--muted); width:45%; }
+  .dlg-body a { color:var(--accent); }
+  .x { background:none; border:0; color:var(--muted); font-size:20px; cursor:pointer; }
+  .note { font-size:11px; color:var(--muted); margin-top:4px; font-style:italic; }
+  .cmpbar { position:fixed; bottom:0; left:0; right:0; background:#221913; border-top:1px solid var(--accent); padding:12px 24px; display:none; justify-content:space-between; align-items:center; z-index:50; }
+  .cmpbar.show { display:flex; }
+  .cmpbar .btn { width:auto; margin-top:0; padding:9px 16px; display:inline-block; }
+  .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
+  .legend span { display:flex; align-items:center; gap:6px; }
+  .legend .leg-item { cursor:pointer; user-select:none; transition:opacity .12s; }
+  .legend .leg-deg { background:#4a3214; color:var(--accent); padding:1px 7px; border-radius:20px; font-size:11px; }
+  .legend .leg-x { color:var(--muted); font-weight:700; padding:0 2px; border-radius:4px; }
+  .legend .leg-x:hover { color:var(--bad); background:#3a1f1a; }
+  .legend i { width:14px; height:3px; display:inline-block; border-radius:2px; }
+  .summary { background:#221913; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
+  .summary .out { color:var(--accent); font-weight:600; }
+  .tabs { display:flex; gap:8px; margin-bottom:10px; }
+  .tabs button { background:transparent; border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:5px 12px; cursor:pointer; font-size:13px; }
+  .tabs button.on { background:var(--accent); color:#1b1410; border-color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>☕ Buscador de recetas de tueste</h1>
+  <div class="sub" id="hdrsub">Snapshot del catálogo de la comunidad de roast.world.</div>
+</header>
+
+<div class="wrap">
+  <aside class="filters">
+    <label for="q">Texto libre</label>
+    <input type="text" id="q" placeholder="p.ej. supremo, yirgacheffe…">
+    <label for="country">Origen / país</label>
+    <select id="country"><option value="">Todos</option></select>
+    <label for="process">Proceso</label>
+    <select id="process"><option value="">Todos</option></select>
+    <label for="level">Nivel de tueste</label>
+    <select id="level"><option value="">Todos</option></select>
+    <label for="device">Dispositivo</label>
+    <select id="device"><option value="">Todos</option></select>
+    <label for="sortBy">Ordenar por</label>
+    <select id="sortBy">
+      <option value="popularity">Popularidad (veces guardada)</option>
+      <option value="name">Nombre (A–Z)</option>
+    </select>
+    <button class="btn" id="searchBtn">Buscar</button>
+    <button class="btn secondary" id="clearBtn">Limpiar filtros</button>
+  </aside>
+
+  <main class="results">
+    <div id="msg"></div>
+    <div class="resbar">
+      <span class="count" id="count">Cargando…</span>
+      <label id="selall-wrap" style="display:none"><input type="checkbox" id="selall"> Seleccionar todo</label>
+    </div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<dialog id="detail">
+  <div class="dlg-head"><strong id="d-title">Receta</strong><button class="x" onclick="document.getElementById('detail').close()">×</button></div>
+  <div class="dlg-body" id="d-body"></div>
+</dialog>
+
+<dialog id="cmp">
+  <div class="dlg-head"><strong id="cmp-title">Comparativa de recetas</strong><button class="x" onclick="document.getElementById('cmp').close()">×</button></div>
+  <div class="dlg-body">
+    <div class="tabs">
+      <button id="tab-power" class="on" onclick="setMetric('power')">Power (1–9)</button>
+      <button id="tab-temp" onclick="setMetric('beanTemp')">Temperatura grano</button>
+    </div>
+    <div class="legend" id="cmp-legend"></div>
+    <div id="cmp-chart"></div>
+    <div class="summary" id="cmp-summary"></div>
+  </div>
+</dialog>
+
+<div class="cmpbar" id="cmpbar">
+  <span class="lbl"><b id="cmp-count">0</b> recetas seleccionadas para comparar</span>
+  <span>
+    <button class="btn secondary" onclick="clearSelection()">Quitar selección</button>
+    <button class="btn" id="cmp-go">Comparar selección</button>
+  </span>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const FILTERS = ["country","process","level","device"];
+let ALL = [];   // todas las recetas del snapshot
+function showError(t){ $("msg").innerHTML = `<div class="error">⚠️ ${t}</div>`; }
+
+async function loadData() {
+  try {
+    ALL = await (await fetch("data/recipes.json")).json();
+    const f = await (await fetch("data/facets.json")).json();
+    FILTERS.forEach(k => (f[k]||[]).forEach(v => { const o=document.createElement("option"); o.value=v; o.textContent=v; $(k).appendChild(o); }));
+    try { const m = await (await fetch("data/meta.json")).json();
+      $("hdrsub").textContent = `Snapshot de ${m.count} recetas populares de la comunidad de roast.world${m.generatedAt?` · ${m.generatedAt}`:""}.`; } catch(e){}
+  } catch (e) { showError("No se pudo cargar el snapshot de datos: " + e.message); }
+}
+
+function fmtTime(s){ if(s==null) return "—"; const m=Math.floor(s/60),x=Math.round(s%60); return `${m}:${String(x).padStart(2,"0")}`; }
+
+function doSearch() {
+  const q = $("q").value.trim().toLowerCase();
+  const fc = {}; FILTERS.forEach(k => fc[k] = $(k).value);
+  let rows = ALL.filter(r => {
+    if (q && !(r.name||"").toLowerCase().includes(q)) return false;
+    if (fc.country && r.country !== fc.country) return false;
+    if (fc.process && r.process !== fc.process) return false;
+    if (fc.level && r.roastLevel !== fc.level) return false;
+    if (fc.device && r.deviceType !== fc.device) return false;
+    return true;
+  });
+  if ($("sortBy").value === "name") rows.sort((a,b)=>(a.name||"").localeCompare(b.name||""));
+  else rows.sort((a,b)=>(b.downloadCount||0)-(a.downloadCount||0));
+  render(rows);
+}
+
+function render(rows) {
+  $("count").textContent = rows.length + (rows.length===1?" receta":" recetas");
+  const list = $("list");
+  if (!rows.length) { list.innerHTML = `<div class="empty">Sin resultados para estos criterios.</div>`; $("selall-wrap").style.display="none"; CURRENT=[]; syncSelAll(); return; }
+  list.innerHTML = rows.map(r => {
+    const tags=[];
+    if (r.country) tags.push(`<span class="tag">${r.country}</span>`);
+    if (r.process) tags.push(`<span class="tag">${r.process}</span>`);
+    if (r.roastLevel) tags.push(`<span class="tag level">${r.roastLevel}</span>`);
+    const checked = SEL.has(r.uid)?"checked":""; const selCls = SEL.has(r.uid)?" sel":"";
+    return `<div class="card${selCls}" id="card-${r.uid}" onclick="openDetail('${r.uid}')">
+      <input type="checkbox" class="pick" ${checked} title="Seleccionar para comparar" onclick="event.stopPropagation(); toggleSel('${r.uid}', this.checked)">
+      <h3>${r.name||"(sin nombre)"}</h3>
+      <div class="tags">${tags.join("")}</div>
+      <div class="metrics">
+        ${r.weight?`<span>⚖️ <b>${r.weight} g</b></span>`:""}
+        <span>📌 <b>${(r.downloadCount||0).toLocaleString("es")}</b> guardada${r.downloadCount===1?"":"s"}</span>
+        ${r.deviceType?`<span>${r.deviceType}</span>`:""}
+        ${r.hasProfile?"":`<span title="sin perfil para comparar">· sin perfil</span>`}
+      </div></div>`;
+  }).join("");
+  rows.forEach(r => { NAMES.set(r.uid, r.name||r.uid); META.set(r.uid, r); });
+  CURRENT = rows.map(r => r.uid);
+  $("selall-wrap").style.display = "flex"; syncSelAll();
+}
+
+function openDetail(uid) {
+  const r = META.get(uid) || {};
+  $("d-title").textContent = r.name || "Receta";
+  const rows = [
+    ["Origen / país", r.country||"—"],
+    ["Proceso", r.process||"—"],
+    ["Nivel de tueste", r.roastLevel||(r.roastDegree!=null?"grado "+r.roastDegree:"—")],
+    ["Peso", r.weight!=null?r.weight+" g":"—"],
+    ["Veces guardada (stash)", (r.downloadCount||0).toLocaleString("es")],
+    ["Dispositivo", r.deviceType||"—"],
+    ["Ver en roast.world", r.url?`<a href="${r.url}" target="_blank" rel="noopener">abrir receta ↗</a>`:"—"],
+  ];
+  $("d-body").innerHTML = "<table>"+rows.map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join("")+"</table>";
+  $("detail").showModal();
+}
+
+// ---- selección ----
+const SEL=new Set(), NAMES=new Map(), META=new Map(); let CURRENT=[];
+function toggleSel(uid,on){ if(on)SEL.add(uid);else SEL.delete(uid); const c=$("card-"+uid); if(c)c.classList.toggle("sel",on); updateBar(); syncSelAll(); }
+function clearSelection(){ SEL.forEach(uid=>{const c=$("card-"+uid); if(c){c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb)cb.checked=false;}}); SEL.clear(); updateBar(); syncSelAll(); }
+function updateBar(){ $("cmp-count").textContent=SEL.size; $("cmpbar").classList.toggle("show",SEL.size>0); }
+function syncSelAll(){ const b=$("selall"); if(!CURRENT.length){b.checked=false;b.indeterminate=false;return;} const n=CURRENT.filter(u=>SEL.has(u)).length; b.checked=n===CURRENT.length; b.indeterminate=n>0&&n<CURRENT.length; }
+$("selall").onchange=function(){ const on=this.checked; CURRENT.forEach(uid=>{ if(on)SEL.add(uid);else SEL.delete(uid); const c=$("card-"+uid); if(c){c.classList.toggle("sel",on); const cb=c.querySelector(".pick"); if(cb)cb.checked=on;} }); updateBar(); syncSelAll(); };
+
+// ---- comparativa (perfiles estáticos data/profiles/<uid>.json) ----
+const COLORS=["#d98a3d","#5aa9e0","#7fc97f","#e06a5a","#c792ea","#e0c84a","#56c9c0","#e08bbf"];
+let CMP={profiles:[],metric:"power"}, PINNED=null;
+
+async function runCompare(){
+  const uids=[...SEL]; if(!uids.length) return;
+  PINNED=null;
+  $("cmp-title").textContent="Comparando "+uids.length+" recetas…";
+  $("cmp-chart").innerHTML="Cargando perfiles…"; $("cmp-legend").innerHTML=""; $("cmp-summary").innerHTML="";
+  $("cmp").showModal();
+  const profiles=[], errors=[];
+  await Promise.all(uids.map(async uid=>{
+    try { const p=await fetch("data/profiles/"+uid+".json"); if(!p.ok) throw 0; profiles.push(await p.json()); }
+    catch(e){ errors.push(uid); }
+  }));
+  CMP.profiles=profiles;
+  $("cmp-title").textContent="Comparativa · "+profiles.length+" recetas";
+  $("cmp-summary").innerHTML = errors.length ? `⚠️ ${errors.length} receta(s) sin perfil en el snapshot (no se pueden comparar).` : "";
+  if(!profiles.length){ $("cmp-chart").innerHTML="<div class='note'>Ninguna de las seleccionadas tiene perfil en el snapshot.</div>"; return; }
+  setMetric(CMP.metric);
+}
+
+function setMetric(m){ CMP.metric=m; $("tab-power").classList.toggle("on",m==="power"); $("tab-temp").classList.toggle("on",m==="beanTemp"); drawChart(); drawSummary(); }
+function seriesOf(p,m){ return m==="power"?(p.series&&p.series.power)||[]:p.beanTemp||[]; }
+function shortLevel(rl){ if(!rl) return ""; const m=rl.match(/\(([^)]+)\)/); return m?m[1]:rl; }
+
+function drawChart(){
+  const W=820,H=360,pad=44,m=CMP.metric;
+  const all=CMP.profiles.map(p=>seriesOf(p,m)).filter(s=>s.length);
+  if(!all.length){ $("cmp-chart").innerHTML="<div class='note'>Sin datos de "+m+".</div>"; $("cmp-legend").innerHTML=""; return; }
+  const maxT=Math.max(...all.flat().map(p=>p[0]),1);
+  let minY=Math.min(...all.flat().map(p=>p[1])), maxY=Math.max(...all.flat().map(p=>p[1]));
+  if(m==="power"){minY=0;maxY=9;}else{minY=Math.floor(minY/10)*10;maxY=Math.ceil(maxY/10)*10;}
+  const x=t=>pad+(t/maxT)*(W-pad-10), y=v=>H-pad-((v-minY)/(maxY-minY||1))*(H-pad-14), step=m==="power";
+  const parts=[];
+  for(let i=0;i<=5;i++){ const gy=pad+i*(H-pad-14)/5, val=(maxY-i*(maxY-minY)/5);
+    parts.push(`<line x1="${pad}" y1="${gy}" x2="${W-10}" y2="${gy}" stroke="#3a2c22"/>`);
+    parts.push(`<text x="6" y="${gy+4}" fill="#b09c8a" font-size="11">${Math.round(val)}</text>`); }
+  for(let s=0;s<=maxT;s+=Math.max(60,Math.round(maxT/6/60)*60))
+    parts.push(`<text x="${x(s)}" y="${H-pad+16}" fill="#b09c8a" font-size="11" text-anchor="middle">${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}</text>`);
+  CMP.profiles.forEach((p,i)=>{ const fc=p.milestones&&p.milestones.firstCrackStart;
+    if(fc&&fc<=maxT) parts.push(`<line class="cmpfc" data-i="${i}" x1="${x(fc)}" y1="${pad}" x2="${x(fc)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`); });
+  CMP.profiles.forEach((p,i)=>{ const s=seriesOf(p,m); if(!s.length) return; const col=COLORS[i%COLORS.length]; let d="";
+    s.forEach((pt,j)=>{ const px=x(pt[0]),py=y(pt[1]); if(j===0)d+=`M ${px} ${py}`; else if(step)d+=` H ${px} V ${py}`; else d+=` L ${px} ${py}`; });
+    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})"/>`);
+    parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2" style="pointer-events:none"/>`); });
+  parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
+  parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
+  parts.push(`<text x="${W/2}" y="${H-6}" fill="#b09c8a" font-size="11" text-anchor="middle">tiempo (min:seg) · líneas punteadas = 1er crack</text>`);
+  $("cmp-chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
+  $("cmp-legend").innerHTML=CMP.profiles.map((p,i)=>
+    `<span class="leg-item" data-i="${i}" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})" title="Clic para fijar el resaltado">
+       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name||p.uid}
+       ${p.roastLevel?`<small class="leg-deg">${shortLevel(p.roastLevel)}</small>`:""}
+       <b class="leg-x" title="Quitar del gráfico" onclick="event.stopPropagation(); removeProfile(${i})">×</b></span>`).join("");
+  highlight(PINNED);
+}
+function highlight(idx){
+  document.querySelectorAll("#cmp-chart .cmpline").forEach(el=>{const i=+el.dataset.i; el.setAttribute("stroke-width",idx===i?3.5:2); el.setAttribute("opacity",idx==null||idx===i?1:0.18);});
+  document.querySelectorAll("#cmp-chart .cmpfc").forEach(el=>{const i=+el.dataset.i; el.setAttribute("opacity",idx==null?0.4:(idx===i?0.9:0.08));});
+  document.querySelectorAll("#cmp-legend .leg-item").forEach(el=>{el.style.opacity=(idx==null||+el.dataset.i===idx)?1:0.4; el.style.fontWeight=(+el.dataset.i===idx)?600:400;});
+}
+function pin(idx){ PINNED=(PINNED===idx)?null:idx; highlight(PINNED); }
+function removeProfile(idx){ const p=CMP.profiles[idx]; if(!p)return; CMP.profiles.splice(idx,1); SEL.delete(p.uid);
+  const c=$("card-"+p.uid); if(c){c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb)cb.checked=false;}
+  PINNED=null; updateBar(); syncSelAll(); if(!CMP.profiles.length){$("cmp").close();return;}
+  $("cmp-title").textContent="Comparativa · "+CMP.profiles.length+" recetas"; drawChart(); drawSummary(); }
+function drawSummary(){
+  const ps=CMP.profiles.filter(p=>seriesOf(p,"power").length); if(ps.length<2){$("cmp-summary").innerHTML="";return;}
+  const avgPower=p=>{const s=p.series.power; if(s.length<2)return s[0]?s[0][1]:0; let area=0,T=p.duration||s[s.length-1][0];
+    for(let i=0;i<s.length;i++){const t0=s[i][0],t1=(i+1<s.length?s[i+1][0]:T); area+=s[i][1]*(t1-t0);} return T?area/T:0;};
+  const rows=ps.map(p=>({name:p.name||p.uid,ap:avgPower(p),fc:p.milestones&&p.milestones.firstCrackStart}));
+  const meanAp=rows.reduce((a,r)=>a+r.ap,0)/rows.length;
+  const out=rows.slice().sort((a,b)=>Math.abs(b.ap-meanAp)-Math.abs(a.ap-meanAp))[0];
+  const fcs=rows.filter(r=>r.fc).map(r=>r.fc), fcSpread=fcs.length?Math.round(Math.max(...fcs)-Math.min(...fcs)):null;
+  const apSpread=(Math.max(...rows.map(r=>r.ap))-Math.min(...rows.map(r=>r.ap)));
+  let verdict=apSpread<0.8?"Perfiles de Power <b>muy parecidos</b> entre sí.":`La que más se separa en Power es <span class="out">${out.name}</span> (Power medio ${out.ap.toFixed(1)} vs media ${meanAp.toFixed(1)}).`;
+  $("cmp-summary").innerHTML=`${verdict}<br>Power medio: ${rows.map(r=>`${r.name.slice(0,22)}: <b>${r.ap.toFixed(1)}</b>`).join(" · ")}.`
+    +(fcSpread!=null?`<br>1er crack varía <b>${fcSpread}s</b> entre las recetas.`:"");
+}
+
+$("cmp-go").onclick=runCompare;
+$("searchBtn").onclick=doSearch;
+$("q").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch();});
+FILTERS.forEach(k=>$(k).addEventListener("change",doSearch));
+$("sortBy").addEventListener("change",doSearch);
+$("clearBtn").onclick=()=>{ $("q").value=""; FILTERS.forEach(k=>$(k).value=""); doSearch(); };
+
+loadData().then(doSearch);
+</script>
+</body>
+</html>
