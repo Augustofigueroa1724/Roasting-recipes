@@ -74,6 +74,40 @@ def fetch_all_recipes(max_n: int) -> list[dict]:
     return out[:max_n]
 
 
+def resolve_refs(recipes: list[dict], batch: int = 500) -> int:
+    """Para las recetas SIN referenceRoastUid, busca su tueste asociado vía recipeID
+    (índice de roasts, con collapse = 1 por receta) y lo usa como ref. En bloque:
+    ~1 consulta por cada `batch` recetas, no una por receta."""
+    todo = [r for r in recipes if not r.get("referenceRoastUid")]
+    print(f"   resolviendo ref vía recipeID para {len(todo)} recetas (lotes de {batch})…")
+    resolved = 0
+    for i in range(0, len(todo), batch):
+        chunk = todo[i:i + batch]
+        uids = [r["uid"] for r in chunk]
+        body = {"modelType": 1, "operation": "_search", "body": {
+            "size": batch, "_source": ["recipeID"],
+            "collapse": {"field": "recipeID.keyword"},
+            "query": {"bool": {"must_not": [{"term": {"deleted": 1}}],
+                               "filter": [{"terms": {"recipeID.keyword": uids}}]}}}}
+        try:
+            hits = community._post(body, timeout=40).get("hits", {}).get("hits", [])
+        except community.CommunityError as exc:
+            print(f"     lote {i} error: {exc}"); continue
+        m = {}
+        for h in hits:
+            rid = h.get("_source", {}).get("recipeID")
+            if rid:
+                m.setdefault(rid, h["_id"])  # roast uid = fichero de Storage
+        for r in chunk:
+            if r["uid"] in m:
+                r["referenceRoastUid"] = m[r["uid"]]
+                resolved += 1
+        if (i // batch) % 10 == 0:
+            print(f"     …{min(i + batch, len(todo))}/{len(todo)} (resueltos {resolved})")
+        time.sleep(0.05)
+    return resolved
+
+
 def build_facets(recipes: list[dict]) -> dict:
     from collections import Counter
     def top(key, n):
@@ -101,7 +135,10 @@ def main():
     recipes = fetch_all_recipes(args.meta_limit)
     print(f"   -> {len(recipes)} recetas para el índice de búsqueda")
 
-    print("2) Escribiendo JSON estáticos…")
+    print("2) Resolviendo el tueste de cada receta (para comparar)…")
+    resolve_refs(recipes)
+
+    print("3) Escribiendo JSON estáticos…")
     # formato COLUMNAR (sin repetir claves). 'ref' = referenceRoastUid: el navegador
     # baja el log de Firebase Storage (público, CORS *) al vuelo para comparar.
     # NO se pre-generan perfiles: el frontend los construye en cliente.
