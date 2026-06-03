@@ -60,6 +60,7 @@
   #cmp { max-width:880px; }
   .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
   .legend span { display:flex; align-items:center; gap:6px; }
+  .legend .leg-item { cursor:pointer; user-select:none; transition:opacity .12s; }
   .legend i { width:14px; height:3px; display:inline-block; border-radius:2px; }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
   .summary { background:#221913; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
@@ -261,6 +262,7 @@ let CMP = { profiles: [], metric: "power" };
 async function runCompare() {
   const uids = [...SEL];
   if (!uids.length) return;
+  PINNED = null;
   $("cmp-title").textContent = "Comparando " + uids.length + " recetas…";
   $("cmp-chart").innerHTML = "Descargando perfiles (puede tardar unos segundos)…";
   $("cmp-legend").innerHTML = ""; $("cmp-summary").innerHTML = "";
@@ -312,7 +314,7 @@ function drawChart() {
   // hitos 1C (líneas verticales por receta, tenues)
   CMP.profiles.forEach((p, i) => {
     const fc = p.milestones && p.milestones.firstCrackStart;
-    if (fc && fc <= maxT) parts.push(`<line x1="${x(fc)}" y1="${pad}" x2="${x(fc)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`);
+    if (fc && fc <= maxT) parts.push(`<line class="cmpfc" data-i="${i}" x1="${x(fc)}" y1="${pad}" x2="${x(fc)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`);
   });
   // curvas
   CMP.profiles.forEach((p, i) => {
@@ -325,7 +327,7 @@ function drawChart() {
       else if (step) d += ` H ${px} V ${py}`;   // escalón
       else d += ` L ${px} ${py}`;
     });
-    parts.push(`<path d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`);
+    parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2"/>`);
   });
   parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
   parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
@@ -333,8 +335,29 @@ function drawChart() {
 
   $("cmp-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
   $("cmp-legend").innerHTML = CMP.profiles.map((p,i) =>
-    `<span><i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}</span>`).join("");
+    `<span class="leg-item" data-i="${i}" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})" title="Clic para fijar el resaltado">
+       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}</span>`).join("");
+  highlight(PINNED);  // mantener el resaltado fijado al redibujar
 }
+
+// resaltar una curva (idx) atenuando las demás; idx null = todas normales
+let PINNED = null;
+function highlight(idx) {
+  document.querySelectorAll("#cmp-chart .cmpline").forEach(el => {
+    const i = +el.dataset.i;
+    el.setAttribute("stroke-width", idx === i ? 3.5 : 2);
+    el.setAttribute("opacity", idx == null || idx === i ? 1 : 0.18);
+  });
+  document.querySelectorAll("#cmp-chart .cmpfc").forEach(el => {
+    const i = +el.dataset.i;
+    el.setAttribute("opacity", idx == null ? 0.4 : (idx === i ? 0.9 : 0.08));
+  });
+  document.querySelectorAll("#cmp-legend .leg-item").forEach(el => {
+    el.style.opacity = (idx == null || +el.dataset.i === idx) ? 1 : 0.4;
+    el.style.fontWeight = (+el.dataset.i === idx) ? 600 : 400;
+  });
+}
+function pin(idx) { PINNED = (PINNED === idx) ? null : idx; highlight(PINNED); }
 
 // resumen: detecta la receta que más se separa (por Power medio y por momento de 1C)
 function drawSummary() {
