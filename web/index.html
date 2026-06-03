@@ -23,7 +23,10 @@
   .btn { margin-top:18px; width:100%; padding:10px; background:var(--accent); color:#1b1410;
          border:0; border-radius:8px; font-weight:600; cursor:pointer; font-size:14px; }
   .btn.secondary { background:transparent; color:var(--muted); border:1px solid var(--line); margin-top:8px; }
-  .count { color:var(--muted); font-size:13px; margin-bottom:14px; }
+  .count { color:var(--muted); font-size:13px; }
+  .resbar { display:flex; align-items:center; gap:16px; margin-bottom:14px; }
+  #selall-wrap { display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink); cursor:pointer; user-select:none; margin-left:auto; }
+  #selall { width:16px; height:16px; accent-color:var(--accent); cursor:pointer; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px;
           padding:14px 16px; margin-bottom:12px; cursor:pointer; transition:border-color .15s; }
   .card:hover { border-color:var(--accent); }
@@ -61,6 +64,9 @@
   .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
   .legend span { display:flex; align-items:center; gap:6px; }
   .legend .leg-item { cursor:pointer; user-select:none; transition:opacity .12s; }
+  .legend .leg-deg { background:#4a3214; color:var(--accent); padding:1px 7px; border-radius:20px; font-size:11px; }
+  .legend .leg-x { color:var(--muted); font-weight:700; padding:0 2px; border-radius:4px; }
+  .legend .leg-x:hover { color:var(--bad); background:#3a1f1a; }
   .legend i { width:14px; height:3px; display:inline-block; border-radius:2px; }
   .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; }
   .summary { background:#221913; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
@@ -105,7 +111,12 @@
 
   <main class="results">
     <div id="msg"></div>
-    <div class="count" id="count">Cargando…</div>
+    <div class="resbar">
+      <span class="count" id="count">Cargando…</span>
+      <label id="selall-wrap" style="display:none">
+        <input type="checkbox" id="selall"> Seleccionar todo
+      </label>
+    </div>
     <div id="list"></div>
   </main>
 </div>
@@ -215,25 +226,46 @@ function render(rows, total, relation) {
       </div></div>`;
   }).join("");
   rows.forEach(r => NAMES.set(r.uid, r.name || r.uid));
+  CURRENT = rows.map(r => r.uid);
+  $("selall-wrap").style.display = rows.length ? "flex" : "none";
+  syncSelAll();
 }
 
 // ---- selección para comparar ----
 const SEL = new Set();
 const NAMES = new Map();
+let CURRENT = [];   // uids mostrados ahora mismo
 function toggleSel(uid, on) {
   if (on) SEL.add(uid); else SEL.delete(uid);
   const card = $("card-" + uid);
   if (card) card.classList.toggle("sel", on);
-  updateBar();
+  updateBar(); syncSelAll();
 }
 function clearSelection() {
   SEL.forEach(uid => { const c = $("card-"+uid); if (c){ c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb) cb.checked=false; } });
-  SEL.clear(); updateBar();
+  SEL.clear(); updateBar(); syncSelAll();
 }
 function updateBar() {
   $("cmp-count").textContent = SEL.size;
   $("cmpbar").classList.toggle("show", SEL.size > 0);
 }
+// estado del "seleccionar todo": marcado si todos los visibles están seleccionados
+function syncSelAll() {
+  const box = $("selall");
+  if (!CURRENT.length) { box.checked = false; box.indeterminate = false; return; }
+  const n = CURRENT.filter(u => SEL.has(u)).length;
+  box.checked = n === CURRENT.length;
+  box.indeterminate = n > 0 && n < CURRENT.length;
+}
+$("selall").onchange = function() {
+  const on = this.checked;
+  CURRENT.forEach(uid => {
+    if (on) SEL.add(uid); else SEL.delete(uid);
+    const c = $("card-"+uid);
+    if (c) { c.classList.toggle("sel", on); const cb=c.querySelector(".pick"); if(cb) cb.checked=on; }
+  });
+  updateBar(); syncSelAll();
+};
 
 async function openDetail(uid) {
   let r;
@@ -286,6 +318,8 @@ function setMetric(m) {
 }
 
 function seriesOf(p, m) { return m === "power" ? (p.series && p.series.power) || [] : p.beanTemp || []; }
+// forma corta del nivel: "Medium (Full city)" -> "Full city"
+function shortLevel(rl) { if (!rl) return ""; const m = rl.match(/\(([^)]+)\)/); return m ? m[1] : rl; }
 
 function drawChart() {
   const W = 820, H = 360, pad = 44;
@@ -336,7 +370,9 @@ function drawChart() {
   $("cmp-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
   $("cmp-legend").innerHTML = CMP.profiles.map((p,i) =>
     `<span class="leg-item" data-i="${i}" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})" title="Clic para fijar el resaltado">
-       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}</span>`).join("");
+       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}
+       ${p.roastLevel ? `<small class="leg-deg">${shortLevel(p.roastLevel)}</small>` : ""}
+       <b class="leg-x" title="Quitar del gráfico" onclick="event.stopPropagation(); removeProfile(${i})">×</b></span>`).join("");
   highlight(PINNED);  // mantener el resaltado fijado al redibujar
 }
 
@@ -358,6 +394,21 @@ function highlight(idx) {
   });
 }
 function pin(idx) { PINNED = (PINNED === idx) ? null : idx; highlight(PINNED); }
+
+// quitar una receta del gráfico (y de la selección)
+function removeProfile(idx) {
+  const p = CMP.profiles[idx];
+  if (!p) return;
+  CMP.profiles.splice(idx, 1);
+  SEL.delete(p.uid);
+  const c = $("card-" + p.uid);
+  if (c) { c.classList.remove("sel"); const cb = c.querySelector(".pick"); if (cb) cb.checked = false; }
+  PINNED = null;
+  updateBar(); syncSelAll();
+  if (!CMP.profiles.length) { $("cmp").close(); return; }
+  $("cmp-title").textContent = "Comparativa · " + CMP.profiles.length + " recetas";
+  drawChart(); drawSummary();
+}
 
 // resumen: detecta la receta que más se separa (por Power medio y por momento de 1C)
 function drawSummary() {
