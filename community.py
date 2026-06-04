@@ -23,6 +23,7 @@ SITE_BASE = "https://roast.world"
 PROFILE_DB = "catalog.db"          # cache de perfiles descargados
 PROFILE_TTL = 7 * 24 * 3600        # 7 días
 MODEL_RECIPE = 2  # enum modelType (ver SCHEMA.md)
+MODEL_USER = 8    # enum modelType del índice de usuarios (username = handle público)
 USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
 
@@ -127,11 +128,12 @@ def _build_query(p: dict) -> dict:
     return {"size": size, "from": frm, "query": {"bool": bool_q}, "sort": sort}
 
 
-def _recipe_view(hit: dict) -> dict:
+def _recipe_view(hit: dict, handle: str | None = None) -> dict:
     s = hit.get("_source", {})
     deg = s.get("roastDegree")
+    uid = hit.get("_id")
     return {
-        "uid": hit.get("_id"),
+        "uid": uid,
         "name": s.get("name"),
         "country": s.get("country") or None,
         "process": s.get("process") or None,
@@ -141,9 +143,10 @@ def _recipe_view(hit: dict) -> dict:
         "downloadCount": s.get("downloadCount") or 0,
         "deviceType": s.get("deviceType") or None,
         "userId": s.get("userId"),
+        "handle": handle,
         "referenceRoastUid": s.get("referenceRoastUid"),
         "updatedAt": s.get("updatedAt"),
-        "url": f"https://roast.world/recipes/{hit.get('_id')}",
+        "url": recipe_public_url(handle, uid),
     }
 
 
@@ -153,8 +156,11 @@ def search(params: dict) -> dict:
     hits = resp.get("hits", {})
     total = hits.get("total", {})
     total_val = total.get("value") if isinstance(total, dict) else total
+    hit_list = hits.get("hits", [])
+    handles = resolve_handles(h.get("_source", {}).get("userId") for h in hit_list)
     return {
-        "results": [_recipe_view(h) for h in hits.get("hits", [])],
+        "results": [_recipe_view(h, handles.get(h.get("_source", {}).get("userId")))
+                    for h in hit_list],
         "total": total_val or 0,
         "relation": total.get("relation") if isinstance(total, dict) else "eq",
     }
@@ -165,7 +171,49 @@ def recipe_detail(uid: str) -> dict | None:
             "body": {"size": 1, "query": {"term": {"_id": uid}}}}
     resp = _post(body)
     hits = resp.get("hits", {}).get("hits", [])
-    return _recipe_view(hits[0]) if hits else None
+    if not hits:
+        return None
+    handle = resolve_handles([hits[0].get("_source", {}).get("userId")]).get(
+        hits[0].get("_source", {}).get("userId"))
+    return _recipe_view(hits[0], handle)
+
+
+# --------------------------------------------------------------------------- #
+# Handle público del autor (para enlazar a la receta en roast.world).
+#
+# roast.world enruta como  /{handle}/recipes/{recipeId}  — el enlace antiguo
+# /recipes/{id} devuelve un 500 "unexpected error". El {handle} es el campo
+# `username` del índice de usuarios (modelType 8), cuyo _id == userId de la
+# receta (p.ej. "ninetailsroaster" o "roxysangree.a4a10d"). El `username` YA
+# contiene el sufijo de tag cuando lo hay; no hay que reconstruir nada.
+# --------------------------------------------------------------------------- #
+def recipe_public_url(handle: str | None, uid: str) -> str:
+    """URL de la receta en roast.world. Con handle usa la ruta pública correcta;
+    sin él, cae al formato antiguo (que da error, pero es lo único disponible)."""
+    if handle:
+        return f"{SITE_BASE}/{handle}/recipes/{uid}"
+    return f"{SITE_BASE}/recipes/{uid}"
+
+
+def resolve_handles(user_ids, batch: int = 500) -> dict:
+    """Mapea userId -> username (handle público) consultando el índice de usuarios
+    en lotes. Ignora ids vacíos/duplicados; los usuarios no encontrados se omiten."""
+    ids = list({u for u in user_ids if u})
+    out: dict = {}
+    for i in range(0, len(ids), batch):
+        chunk = ids[i:i + batch]
+        body = {"modelType": MODEL_USER, "operation": "_search",
+                "body": {"size": batch, "_source": ["username"],
+                         "query": {"ids": {"values": chunk}}}}
+        try:
+            hits = _post(body, timeout=40).get("hits", {}).get("hits", [])
+        except CommunityError:
+            continue
+        for h in hits:
+            uname = h.get("_source", {}).get("username")
+            if uname:
+                out[h["_id"]] = uname
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -298,7 +346,8 @@ def build_profile_from_log(recipe_meta: dict, log: dict) -> dict:
             "firstCrackEnd": ms_time(log.get("indexFirstCrackEnd")),
         },
         "duration": log.get("totalRoastTime") or (len(log.get("beanTemperature", [])) / sr if sr else 0),
-        "url": f"{SITE_BASE}/recipes/{recipe_meta.get('uid')}",
+        "handle": recipe_meta.get("handle"),
+        "url": recipe_public_url(recipe_meta.get("handle"), recipe_meta.get("uid")),
     }
 
 
@@ -310,7 +359,11 @@ def _cache_get(uid: str) -> dict | None:
         row = conn.execute("SELECT fetchedAt, data FROM recipe_profiles WHERE uid=?", (uid,)).fetchone()
         conn.close()
         if row and time.time() - row[0] < PROFILE_TTL:
-            return json.loads(row[1])
+            data = json.loads(row[1])
+            # invalidar perfiles cacheados en formato antiguo (sin clave 'handle'):
+            # se reconstruyen para incluir la URL pública /{handle}/recipes/{uid}.
+            if "handle" in data:
+                return data
     except sqlite3.Error:
         pass
     return None

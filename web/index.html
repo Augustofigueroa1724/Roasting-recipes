@@ -64,6 +64,8 @@
   .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
   .legend span { display:flex; align-items:center; gap:6px; }
   .legend .leg-item { cursor:pointer; user-select:none; transition:opacity .12s; }
+  .legend a.leg-link { color:inherit; text-decoration:none; }
+  .legend a.leg-link:hover { color:var(--accent); text-decoration:underline; }
   .legend .leg-deg { background:#4a3214; color:var(--accent); padding:1px 7px; border-radius:20px; font-size:11px; }
   .legend .leg-x { color:var(--muted); font-weight:700; padding:0 2px; border-radius:4px; }
   .legend .leg-x:hover { color:var(--bad); background:#3a1f1a; }
@@ -362,7 +364,7 @@ function drawChart() {
       else d += ` L ${px} ${py}`;
     });
     // línea ancha invisible encima para facilitar el clic/hover sobre la curva
-    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})"/>`);
+    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="openRecipe(${i})"><title>${(p.name||p.uid)} · clic para abrir en roast.world ↗</title></path>`);
     parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2" style="pointer-events:none"/>`);
   });
   parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
@@ -372,7 +374,7 @@ function drawChart() {
   $("cmp-chart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
   $("cmp-legend").innerHTML = CMP.profiles.map((p,i) =>
     `<span class="leg-item" data-i="${i}" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})" title="Clic para fijar el resaltado">
-       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name || p.uid}
+       <i style="background:${COLORS[i%COLORS.length]}"></i><a class="leg-link" href="${p.url||'#'}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir receta en roast.world ↗">${p.name || p.uid}</a>
        ${p.roastLevel ? `<small class="leg-deg">${shortLevel(p.roastLevel)}</small>` : ""}
        <b class="leg-x" title="Quitar del gráfico" onclick="event.stopPropagation(); removeProfile(${i})">×</b></span>`).join("");
   highlight(PINNED);  // mantener el resaltado fijado al redibujar
@@ -396,6 +398,7 @@ function highlight(idx) {
   });
 }
 function pin(idx) { PINNED = (PINNED === idx) ? null : idx; highlight(PINNED); }
+function openRecipe(idx) { const p = CMP.profiles[idx]; if (p && p.url) window.open(p.url, "_blank", "noopener"); }
 
 // quitar una receta del gráfico (y de la selección)
 function removeProfile(idx) {

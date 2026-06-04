@@ -30,7 +30,7 @@ DATA = os.path.join(DOCS, "data")
 PROFILES = os.path.join(DATA, "profiles")
 
 
-META_FIELDS = ["name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "referenceRoastUid"]
+META_FIELDS = ["name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "referenceRoastUid", "userId"]
 
 
 def fetch_all_recipes(max_n: int) -> list[dict]:
@@ -108,6 +108,21 @@ def resolve_refs(recipes: list[dict], batch: int = 500) -> int:
     return resolved
 
 
+def resolve_handles(recipes: list[dict]) -> int:
+    """Resuelve el handle público (username) del autor de cada receta a partir de
+    su userId, para poder enlazar a /{handle}/recipes/{uid} en roast.world."""
+    user_ids = [r.get("userId") for r in recipes if r.get("userId")]
+    print(f"   resolviendo handle de autor para {len(set(user_ids))} usuarios únicos…")
+    handles = community.resolve_handles(user_ids)
+    resolved = 0
+    for r in recipes:
+        h = handles.get(r.get("userId"))
+        if h:
+            r["handle"] = h
+            resolved += 1
+    return resolved
+
+
 def build_facets(recipes: list[dict]) -> dict:
     from collections import Counter
     def top(key, n):
@@ -138,15 +153,21 @@ def main():
     print("2) Resolviendo el tueste de cada receta (para comparar)…")
     resolve_refs(recipes)
 
-    print("3) Escribiendo JSON estáticos…")
+    print("3) Resolviendo el handle público del autor (para enlazar a roast.world)…")
+    nh = resolve_handles(recipes)
+    print(f"   -> {nh}/{len(recipes)} recetas con handle de autor"
+          + ("" if nh == len(recipes) else f"  ⚠️ {len(recipes) - nh} sin handle"))
+
+    print("4) Escribiendo JSON estáticos…")
     # formato COLUMNAR (sin repetir claves). 'ref' = referenceRoastUid: el navegador
     # baja el log de Firebase Storage (público, CORS *) al vuelo para comparar.
+    # 'handle' = username del autor: el front enlaza a /{handle}/recipes/{uid}.
     # NO se pre-generan perfiles: el frontend los construye en cliente.
-    out_fields = ["uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "ref"]
+    out_fields = ["uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "ref", "handle"]
     def to_row(r):
-        vals = [r.get(f) for f in out_fields[:-1]]
-        vals.append(r.get("referenceRoastUid"))
-        return vals
+        return [r.get("uid"), r.get("name"), r.get("country"), r.get("process"),
+                r.get("roastDegree"), r.get("weight"), r.get("downloadCount"),
+                r.get("deviceType"), r.get("referenceRoastUid"), r.get("handle")]
     comparable = sum(1 for r in recipes if r.get("referenceRoastUid"))
     rows = [to_row(r) for r in recipes]
     with open(os.path.join(DATA, "recipes.json"), "w", encoding="utf-8") as fh:
