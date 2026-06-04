@@ -55,6 +55,8 @@
   .legend .leg-deg { background:#4a3214; color:var(--accent); padding:1px 7px; border-radius:20px; font-size:11px; }
   .legend .leg-x { color:var(--muted); font-weight:700; padding:0 2px; border-radius:4px; }
   .legend .leg-x:hover { color:var(--bad); background:#3a1f1a; }
+  .legend .leg-link { color:var(--ink); text-decoration:none; }
+  .legend .leg-link:hover { color:var(--accent); text-decoration:underline; }
   .legend i { width:14px; height:3px; display:inline-block; border-radius:2px; }
   .summary { background:#221913; border:1px solid var(--line); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:10px; }
   .summary .out { color:var(--accent); font-weight:600; }
@@ -293,15 +295,15 @@ function drawChart(){
     if(fc&&fc<=maxT) parts.push(`<line class="cmpfc" data-i="${i}" x1="${x(fc)}" y1="${pad}" x2="${x(fc)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`); });
   CMP.profiles.forEach((p,i)=>{ const s=seriesOf(p,m); if(!s.length) return; const col=COLORS[i%COLORS.length]; let d="";
     s.forEach((pt,j)=>{ const px=x(pt[0]),py=y(pt[1]); if(j===0)d+=`M ${px} ${py}`; else if(step)d+=` H ${px} V ${py}`; else d+=` L ${px} ${py}`; });
-    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})"/>`);
+    parts.push(`<path class="cmphit" data-i="${i}" d="${d}" fill="none" stroke="transparent" stroke-width="12" style="cursor:pointer" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="openRecipe(${i})"><title>${p.name||p.uid} — abrir en roast.world ↗</title></path>`);
     parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2" style="pointer-events:none"/>`); });
   parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
   parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
-  parts.push(`<text x="${W/2}" y="${H-6}" fill="#b09c8a" font-size="11" text-anchor="middle">tiempo (min:seg) · líneas punteadas = 1er crack</text>`);
+  parts.push(`<text x="${W/2}" y="${H-6}" fill="#b09c8a" font-size="11" text-anchor="middle">tiempo (min:seg) · líneas punteadas = 1er crack · clic en una curva = ver receta ↗</text>`);
   $("cmp-chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
   $("cmp-legend").innerHTML=CMP.profiles.map((p,i)=>
     `<span class="leg-item" data-i="${i}" onmouseenter="highlight(${i})" onmouseleave="highlight(PINNED)" onclick="pin(${i})" title="Clic para fijar el resaltado">
-       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.name||p.uid}
+       <i style="background:${COLORS[i%COLORS.length]}"></i>${p.url?`<a class="leg-link" href="${p.url}" target="_blank" rel="noopener" title="Abrir en roast.world" onclick="event.stopPropagation()">${p.name||p.uid} ↗</a>`:(p.name||p.uid)}
        ${p.roastLevel?`<small class="leg-deg">${shortLevel(p.roastLevel)}</small>`:""}
        <b class="leg-x" title="Quitar del gráfico" onclick="event.stopPropagation(); removeProfile(${i})">×</b></span>`).join("");
   highlight(PINNED);
@@ -312,6 +314,7 @@ function highlight(idx){
   document.querySelectorAll("#cmp-legend .leg-item").forEach(el=>{el.style.opacity=(idx==null||+el.dataset.i===idx)?1:0.4; el.style.fontWeight=(+el.dataset.i===idx)?600:400;});
 }
 function pin(idx){ PINNED=(PINNED===idx)?null:idx; highlight(PINNED); }
+function openRecipe(idx){ const p=CMP.profiles[idx]; if(p&&p.url) window.open(p.url,"_blank","noopener"); }
 function removeProfile(idx){ const p=CMP.profiles[idx]; if(!p)return; CMP.profiles.splice(idx,1); SEL.delete(p.uid);
   const c=$("card-"+p.uid); if(c){c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb)cb.checked=false;}
   PINNED=null; updateBar(); syncSelAll(); if(!CMP.profiles.length){$("cmp").close();return;}
