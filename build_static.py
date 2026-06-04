@@ -43,10 +43,14 @@ def fetch_all_recipes(max_n: int) -> list[dict]:
     seen: set[str] = set()
     after = None
     page = 1000
+    diag_shown = False
+    no_handle = 0
     while len(out) < max_n:
         body = {
             "size": page,
-            "_source": META_FIELDS,
+            # _source completo: el handle público del autor (necesario para la URL
+            # /{handle}/recipes/{id}) no está en el esquema documentado.
+            "_source": True,
             "query": {"bool": {"must_not": [{"term": {"deleted": 1}}, {"term": {"isPrivate": 1}}]}},
             "sort": [{"downloadCount": "desc"}, {"updatedAt": "asc"}],
         }
@@ -56,6 +60,9 @@ def fetch_all_recipes(max_n: int) -> list[dict]:
         hits = resp.get("hits", {}).get("hits", [])
         if not hits:
             break
+        if not diag_shown and hits:
+            print("   [diag] campos del _source de una receta:", sorted(hits[0].get("_source", {}).keys()))
+            diag_shown = True
         for h in hits:
             uid = h["_id"]
             if uid in seen:
@@ -65,12 +72,19 @@ def fetch_all_recipes(max_n: int) -> list[dict]:
             row = {"uid": uid}
             for f in META_FIELDS:
                 row[f] = s.get(f)
+            row["userId"] = s.get("userId")
+            row["userHandle"] = community.public_handle(s)
+            if not row["userHandle"]:
+                no_handle += 1
             out.append(row)
         after = hits[-1].get("sort")
         print(f"  metadatos: {len(out)}")
         time.sleep(0.05)
         if len(hits) < page:
             break
+    if no_handle:
+        print(f"   ⚠️ {no_handle}/{len(out)} recetas sin handle de autor (sin enlace a roast.world). "
+              f"Si son muchas, revisa el [diag] de arriba y ajusta los campos en community.public_handle().")
     return out[:max_n]
 
 
@@ -142,10 +156,11 @@ def main():
     # formato COLUMNAR (sin repetir claves). 'ref' = referenceRoastUid: el navegador
     # baja el log de Firebase Storage (público, CORS *) al vuelo para comparar.
     # NO se pre-generan perfiles: el frontend los construye en cliente.
-    out_fields = ["uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "ref"]
+    out_fields = ["uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType", "ref", "userHandle"]
     def to_row(r):
-        vals = [r.get(f) for f in out_fields[:-1]]
-        vals.append(r.get("referenceRoastUid"))
+        vals = [r.get(f) for f in ("uid", "name", "country", "process", "roastDegree", "weight", "downloadCount", "deviceType")]
+        vals.append(r.get("referenceRoastUid"))  # ref
+        vals.append(r.get("userHandle"))
         return vals
     comparable = sum(1 for r in recipes if r.get("referenceRoastUid"))
     rows = [to_row(r) for r in recipes]
