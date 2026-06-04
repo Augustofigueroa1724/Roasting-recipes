@@ -336,6 +336,7 @@ def build_profile_from_log(recipe_meta: dict, log: dict) -> dict:
         "roastDegree": log.get("roastDegree"),
         "roastLevel": ROAST_DEGREE_LABELS.get(log.get("roastDegree")),
         "weight": recipe_meta.get("weight"),
+        "downloadCount": recipe_meta.get("downloadCount") or 0,
         "totalRoastTime": log.get("totalRoastTime"),
         "sampleRate": sr,
         "series": series,                                   # power/fan/drum: [[seg, valor1-9]]
@@ -360,9 +361,9 @@ def _cache_get(uid: str) -> dict | None:
         conn.close()
         if row and time.time() - row[0] < PROFILE_TTL:
             data = json.loads(row[1])
-            # invalidar perfiles cacheados en formato antiguo (sin clave 'handle'):
-            # se reconstruyen para incluir la URL pública /{handle}/recipes/{uid}.
-            if "handle" in data:
+            # invalidar perfiles cacheados en formato antiguo (sin 'handle' ni
+            # 'downloadCount'): se reconstruyen con la URL pública y el nº de stash.
+            if "handle" in data and "downloadCount" in data:
                 return data
     except sqlite3.Error:
         pass
