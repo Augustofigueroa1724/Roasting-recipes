@@ -36,8 +36,13 @@
   .empty { color:var(--muted); padding:40px 0; text-align:center; }
   .error { background:#3a1f1a; border:1px solid var(--bad); color:#f0c4bd; padding:12px 14px; border-radius:8px; margin-bottom:14px; font-size:13px; }
   dialog { background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:12px; max-width:560px; width:90%; padding:0; }
-  #cmp { max-width:880px; }
   dialog::backdrop { background:rgba(0,0,0,.6); }
+  .cmp-page { position:fixed; inset:0; background:var(--bg); z-index:100; overflow:auto; display:none; }
+  .cmp-page.show { display:block; }
+  .cmp-page .dlg-head { position:sticky; top:0; background:var(--bg); padding:18px 24px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; z-index:1; }
+  .cmp-page .dlg-body { padding:18px 24px; max-width:1100px; margin:0 auto; }
+  .back-btn { background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 14px; cursor:pointer; font-size:14px; }
+  .back-btn:hover { border-color:var(--accent); color:var(--accent); }
   .dlg-head { padding:18px 20px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
   .dlg-body { padding:18px 20px; }
   .dlg-body table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -107,8 +112,8 @@
   <div class="dlg-body" id="d-body"></div>
 </dialog>
 
-<dialog id="cmp">
-  <div class="dlg-head"><strong id="cmp-title">Comparativa de recetas</strong><button class="x" onclick="document.getElementById('cmp').close()">×</button></div>
+<div id="cmp" class="cmp-page">
+  <div class="dlg-head"><strong id="cmp-title">Comparativa de recetas</strong><button class="back-btn" onclick="closeCmp()">← Volver</button></div>
   <div class="dlg-body">
     <div class="tabs">
       <button id="tab-power" class="on" onclick="setMetric('power')">Power (1–9)</button>
@@ -118,7 +123,7 @@
     <div id="cmp-chart"></div>
     <div class="summary" id="cmp-summary"></div>
   </div>
-</dialog>
+</div>
 
 <div class="cmpbar" id="cmpbar">
   <span class="lbl"><b id="cmp-count">0</b> recetas seleccionadas para comparar</span>
@@ -261,12 +266,14 @@ async function getProfile(uid){
   const prof=parseLog(await resp.json(), r); PROFCACHE.set(uid,prof); return prof;
 }
 
+function openCmp(){ $("cmp").classList.add("show"); document.body.style.overflow="hidden"; window.scrollTo(0,0); }
+function closeCmp(){ $("cmp").classList.remove("show"); document.body.style.overflow=""; }
 async function runCompare(){
   const uids=[...SEL]; if(!uids.length) return;
   PINNED=null;
   $("cmp-title").textContent="Comparando "+uids.length+" recetas…";
   $("cmp-chart").innerHTML="Descargando perfiles de tueste…"; $("cmp-legend").innerHTML=""; $("cmp-summary").innerHTML="";
-  $("cmp").showModal();
+  openCmp();
   const profiles=[], errors=[];
   await Promise.all(uids.map(async uid=>{ try{ profiles.push(await getProfile(uid)); }catch(e){ errors.push(uid); } }));
   CMP.profiles=profiles;
@@ -320,7 +327,7 @@ function pin(idx){ PINNED=(PINNED===idx)?null:idx; highlight(PINNED); }
 function openRecipe(idx){ const p=CMP.profiles[idx]; if(p&&p.url) window.open(p.url,"_blank","noopener"); }
 function removeProfile(idx){ const p=CMP.profiles[idx]; if(!p)return; CMP.profiles.splice(idx,1); SEL.delete(p.uid);
   const c=$("card-"+p.uid); if(c){c.classList.remove("sel"); const cb=c.querySelector(".pick"); if(cb)cb.checked=false;}
-  PINNED=null; updateBar(); syncSelAll(); if(!CMP.profiles.length){$("cmp").close();return;}
+  PINNED=null; updateBar(); syncSelAll(); if(!CMP.profiles.length){closeCmp();return;}
   $("cmp-title").textContent="Comparativa · "+CMP.profiles.length+" recetas"; drawChart(); drawSummary(); }
 function drawSummary(){
   const ps=CMP.profiles.filter(p=>seriesOf(p,"power").length); if(ps.length<2){$("cmp-summary").innerHTML="";return;}
@@ -337,6 +344,7 @@ function drawSummary(){
 }
 
 $("cmp-go").onclick=runCompare;
+document.addEventListener("keydown",e=>{ if(e.key==="Escape" && $("cmp").classList.contains("show")) closeCmp(); });
 $("searchBtn").onclick=doSearch;
 $("q").addEventListener("keydown",e=>{if(e.key==="Enter")doSearch();});
 FILTERS.forEach(k=>$(k).addEventListener("change",doSearch));

@@ -60,7 +60,12 @@
   .cmpbar .lbl { font-size:14px; }
   .cmpbar button { margin-left:8px; }
   .cmpbar .btn { width:auto; margin-top:0; padding:9px 16px; display:inline-block; }
-  #cmp { max-width:880px; }
+  .cmp-page { position:fixed; inset:0; background:var(--bg); z-index:100; overflow:auto; display:none; }
+  .cmp-page.show { display:block; }
+  .cmp-page .dlg-head { position:sticky; top:0; background:var(--bg); z-index:1; }
+  .cmp-page .dlg-body { max-width:1100px; margin:0 auto; }
+  .back-btn { background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:8px 14px; cursor:pointer; font-size:14px; }
+  .back-btn:hover { border-color:var(--accent); color:var(--accent); }
   .legend { display:flex; flex-wrap:wrap; gap:14px; margin:6px 0 12px; font-size:13px; }
   .legend span { display:flex; align-items:center; gap:6px; }
   .legend .leg-item { cursor:pointer; user-select:none; transition:opacity .12s; }
@@ -131,10 +136,10 @@
   <div class="dlg-body" id="d-body"></div>
 </dialog>
 
-<dialog id="cmp">
+<div id="cmp" class="cmp-page">
   <div class="dlg-head">
     <strong id="cmp-title">Comparativa de recetas</strong>
-    <button class="x" onclick="document.getElementById('cmp').close()">×</button>
+    <button class="back-btn" onclick="closeCmp()">← Volver</button>
   </div>
   <div class="dlg-body">
     <div class="tabs">
@@ -145,7 +150,7 @@
     <div id="cmp-chart"></div>
     <div class="summary" id="cmp-summary"></div>
   </div>
-</dialog>
+</div>
 
 <div class="cmpbar" id="cmpbar">
   <span class="lbl"><b id="cmp-count">0</b> recetas seleccionadas para comparar</span>
@@ -293,6 +298,8 @@ async function openDetail(uid) {
 const COLORS = ["#d98a3d","#5aa9e0","#7fc97f","#e06a5a","#c792ea","#e0c84a","#56c9c0","#e08bbf"];
 let CMP = { profiles: [], metric: "power" };
 
+function openCmp() { $("cmp").classList.add("show"); document.body.style.overflow = "hidden"; window.scrollTo(0, 0); }
+function closeCmp() { $("cmp").classList.remove("show"); document.body.style.overflow = ""; }
 async function runCompare() {
   const uids = [...SEL];
   if (!uids.length) return;
@@ -300,7 +307,7 @@ async function runCompare() {
   $("cmp-title").textContent = "Comparando " + uids.length + " recetas…";
   $("cmp-chart").innerHTML = "Descargando perfiles (puede tardar unos segundos)…";
   $("cmp-legend").innerHTML = ""; $("cmp-summary").innerHTML = "";
-  $("cmp").showModal();
+  openCmp();
   let data;
   try { data = await jget("/api/compare?uids=" + uids.join(",")); }
   catch (e) { $("cmp-chart").innerHTML = "<span class='out'>Error: " + e.message + "</span>"; return; }
@@ -410,7 +417,7 @@ function removeProfile(idx) {
   if (c) { c.classList.remove("sel"); const cb = c.querySelector(".pick"); if (cb) cb.checked = false; }
   PINNED = null;
   updateBar(); syncSelAll();
-  if (!CMP.profiles.length) { $("cmp").close(); return; }
+  if (!CMP.profiles.length) { closeCmp(); return; }
   $("cmp-title").textContent = "Comparativa · " + CMP.profiles.length + " recetas";
   drawChart(); drawSummary();
 }
@@ -443,6 +450,7 @@ function drawSummary() {
 }
 
 $("cmp-go").onclick = runCompare;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && $("cmp").classList.contains("show")) closeCmp(); });
 
 $("searchBtn").onclick = doSearch;
 $("q").addEventListener("keydown", e => { if (e.key === "Enter") doSearch(); });
