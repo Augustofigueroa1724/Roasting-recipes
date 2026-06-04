@@ -38,6 +38,34 @@ ROAST_DEGREE_LABELS = {
 }
 ROAST_DEGREE_BY_LABEL = {v: k for k, v in ROAST_DEGREE_LABELS.items()}
 
+# roast.world enruta las recetas públicas como /{handle}/recipes/{recipeId},
+# donde {handle} es el handle público del autor (p.ej. "jambarodo.uCWZ" =
+# username + "." + tag). El _id de la receta SOLO no basta: sin el handle la web
+# de roast.world responde "unexpected error". El handle no aparece en el esquema
+# documentado, así que lo buscamos en varios campos candidatos del _source.
+_HANDLE_FIELDS = ("userHandle", "handle", "userSlug", "slug", "profileSlug", "publicHandle")
+_USERNAME_FIELDS = ("userName", "username", "userUsername", "displayName")
+_TAG_FIELDS = ("userTag", "tag", "userIdShort", "discriminator")
+
+
+def public_handle(source: dict) -> str | None:
+    """Deriva el handle público del autor desde el _source de una receta."""
+    for f in _HANDLE_FIELDS:
+        v = source.get(f)
+        if isinstance(v, str) and v.strip() and "/" not in v:
+            return v.strip()
+    uname = next((source.get(f) for f in _USERNAME_FIELDS if isinstance(source.get(f), str) and source.get(f).strip()), None)
+    tag = next((source.get(f) for f in _TAG_FIELDS if isinstance(source.get(f), str) and source.get(f).strip()), None)
+    if uname and tag:
+        return f"{uname.strip()}.{tag.strip()}"
+    return None
+
+
+def recipe_public_url(source: dict, recipe_id: str) -> str | None:
+    """URL pública de la receta en roast.world, o None si no hay handle."""
+    h = public_handle(source)
+    return f"{SITE_BASE}/{h}/recipes/{recipe_id}" if h else None
+
 
 class CommunityError(RuntimeError):
     pass
@@ -141,9 +169,10 @@ def _recipe_view(hit: dict) -> dict:
         "downloadCount": s.get("downloadCount") or 0,
         "deviceType": s.get("deviceType") or None,
         "userId": s.get("userId"),
+        "userHandle": public_handle(s),
         "referenceRoastUid": s.get("referenceRoastUid"),
         "updatedAt": s.get("updatedAt"),
-        "url": f"https://roast.world/recipes/{hit.get('_id')}",
+        "url": recipe_public_url(s, hit.get("_id")),
     }
 
 
@@ -298,7 +327,7 @@ def build_profile_from_log(recipe_meta: dict, log: dict) -> dict:
             "firstCrackEnd": ms_time(log.get("indexFirstCrackEnd")),
         },
         "duration": log.get("totalRoastTime") or (len(log.get("beanTemperature", [])) / sr if sr else 0),
-        "url": f"{SITE_BASE}/recipes/{recipe_meta.get('uid')}",
+        "url": recipe_meta.get("url"),  # /{handle}/recipes/{id}, ya resuelto en recipe_detail
     }
 
 

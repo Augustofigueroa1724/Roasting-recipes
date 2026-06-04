@@ -282,7 +282,7 @@ async function openDetail(uid) {
     ["Veces guardada (stash)", (r.downloadCount || 0).toLocaleString("es")],
     ["Dispositivo", r.deviceType || "—"],
     ["Autor (userId)", r.userId || "—"],
-    ["Ver en roast.world", `<a href="${r.url}" target="_blank" rel="noopener">abrir receta ↗</a>`],
+    ["Ver en roast.world", r.url ? `<a href="${r.url}" target="_blank" rel="noopener">abrir receta ↗</a>` : "—"],
   ];
   $("d-body").innerHTML = "<table>" + rows.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("") + "</table>"
     + `<div class="note">La curva completa y el archivo importable a roast.world/RoasTime llegarán en la FASE 3.</div>`;

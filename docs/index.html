@@ -143,7 +143,8 @@ async function loadData() {
     ALL = raw.rows.map(row => {
       const o = {}; F.forEach((f,i)=>o[f]=row[i]);
       o.roastLevel = ROAST_DEGREE_LABELS[o.roastDegree] || null;
-      o.url = "https://roast.world/recipes/" + o.uid;
+      // roast.world enruta como /{handle}/recipes/{id}; sin handle no hay enlace fiable
+      o.url = o.userHandle ? "https://roast.world/" + o.userHandle + "/recipes/" + o.uid : null;
       return o;
     });
     const f = await (await fetch("data/facets.json")).json();
