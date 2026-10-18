@@ -95,8 +95,12 @@ Abre `http://localhost:8000` (en Codespaces, pestaña **PORTS** → puerto 8000)
 
 - Busca por **texto libre** o filtra por **origen / proceso / nivel de tueste / dispositivo**.
 - Marca recetas con el **checkbox** (o **Seleccionar todo**) y pulsa **Comparar selección**.
-- En el gráfico: pestañas **Power (1–9)** y **Temperatura**, líneas de **1er crack**,
-  **resaltado** por leyenda (clic para fijar) y **×** para quitar una receta.
+- En el gráfico: pestañas **Power (1–9)**, **Temperatura grano** y **Power vs temp. grano**,
+  líneas de **1er crack**, **resaltado** por leyenda (clic para fijar) y **×** para quitar una receta.
+- **Power vs temp. grano**: el nivel de Power en función de la temperatura del grano, no del
+  tiempo. Es la vista más fiable para reproducir una receta: no depende del peso del lote ni
+  de la carga. Se parte del **punto de giro** (mínimo de temperatura tras la carga; los
+  cambios anteriores se sitúan en esa temperatura) y la temperatura se fuerza a no decrecer.
 - **Eje de tiempo**: `min:seg` (real) o `% tueste` (cada tueste alineado al 100% de su
   duración; compensa que un lote más grande tarde más).
 - **★ Elegir la central**: elige la receta que mejor representa al conjunto para

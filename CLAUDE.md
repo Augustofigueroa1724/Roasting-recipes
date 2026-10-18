@@ -31,6 +31,16 @@ de diseño y los hilos abiertos. Idioma del proyecto: español.
   y la curva `beanTemperature`, así que Power en función de la temperatura de grano se
   puede derivar cruzando ambas.
 
+### Vista Power vs temperatura de grano (2026-10-18)
+- Pedida por el usuario: la temperatura del grano es más fiable que el tiempo para
+  reproducir una receta. Se deriva cruzando `actions.actionTimeList` (Power por índice de
+  tiempo) con la curva `beanTemperature` del log (`powerVsTemp()` en ambos HTML).
+- Punto de giro = mínimo de temperatura en el primer 40 % del tueste; las acciones
+  anteriores se colocan en esa temperatura; eje forzado a no decrecer (máximo acumulado);
+  se añade un punto final a la temperatura de descarga para mantener el último nivel.
+- En esta vista se ocultan los botones de eje (min:seg / %) y no se dibuja la mediana;
+  el ranking de la central sigue calculándose sobre tiempo normalizado.
+
 ### Trazabilidad tueste → receta (2026-10-17)
 - El índice de tuestes (proxy `modelType` 1) tiene `recipeID`; la API pública
   (`x-api-key`) no lo expone, y RoasTime/roast.world no lo muestran en la ficha.

@@ -154,6 +154,7 @@
     <div class="tabs">
       <button id="tab-power" class="on" onclick="setMetric('power')">Power (1–9)</button>
       <button id="tab-temp" onclick="setMetric('beanTemp')">Temperatura grano</button>
+      <button id="tab-pt" onclick="setMetric('powerTemp')" title="Power en función de la temperatura del grano (desde el punto de giro): independiente del tiempo y del peso del lote">Power vs temp. grano</button>
       <span class="tabs-sep"></span>
       <button id="ax-sec" class="on" onclick="setAxis('sec')" title="Tiempo real (min:seg)">min:seg</button>
       <button id="ax-pct" onclick="setAxis('pct')" title="Tiempo alineado al 100% del tueste: compensa la duración distinta de cada lote">% tueste</button>
@@ -334,14 +335,30 @@ async function runCompare() {
 function setMetric(m) {
   CMP.metric = m;
   $("tab-power").classList.toggle("on", m === "power");
-  $("tab-temp").classList.toggle("on", m === "beanTemp");
+  $("tab-temp").classList.toggle("on",m==="beanTemp"); $("tab-pt").classList.toggle("on",m==="powerTemp");
   drawChart();
 }
 
-function seriesOf(p, m) { return m === "power" ? (p.series && p.series.power) || [] : p.beanTemp || []; }
+function seriesOf(p,m){ return m==="power"?(p.series&&p.series.power)||[]:m==="powerTemp"?powerVsTemp(p):p.beanTemp||[]; }
 // forma corta del nivel: "Medium (Full city)" -> "Full city"
 function shortLevel(rl) { if (!rl) return ""; const m = rl.match(/\(([^)]+)\)/); return m ? m[1] : rl; }
 
+// ---- Power en función de la temperatura del grano ----
+// Más fiable que el tiempo: no depende del peso del lote ni de la carga. Se usa la
+// temperatura de grano desde el punto de giro (mínimo tras la carga) y se fuerza a
+// no decrecer, porque antes del giro la temperatura baja y el eje no sería una función.
+function tempAt(p,t){ const bt=p.beanTemp||[]; if(!bt.length) return null; let k=0;
+  while(k+1<bt.length && bt[k+1][0]<t) k++; const a=bt[k], b=bt[k+1];
+  return (!b||t<=a[0])?a[1]:a[1]+(b[1]-a[1])*(t-a[0])/((b[0]-a[0])||1); }
+function powerVsTemp(p){
+  const pw=(p.series&&p.series.power)||[], bt=p.beanTemp||[]; if(!pw.length||!bt.length) return [];
+  const lim=Math.max(1,Math.floor(bt.length*0.4)); let tp=0;        // punto de giro en el primer 40%
+  for(let i=1;i<lim;i++) if(bt[i][1]<bt[tp][1]) tp=i;
+  const tTP=bt[tp][0], TTP=bt[tp][1]; let run=TTP; const out=[];
+  pw.forEach(([t,v])=>{ let T=t<=tTP?TTP:tempAt(p,t); if(T==null) return; run=Math.max(run,T); out.push([Math.round(run*10)/10,v]); });
+  const Tend=Math.max(run,bt[bt.length-1][1]); out.push([Math.round(Tend*10)/10,pw[pw.length-1][1]]);  // mantener el último nivel hasta la descarga
+  return out;
+}
 // ---- eje de tiempo: segundos reales o % del tueste ----
 // El % alinea los tuestes al 100% de su duración: la diferencia de tiempo entre
 // recetas se debe sobre todo al peso del lote, así que así se comparan de verdad.
@@ -391,28 +408,31 @@ function pickCentral(){
 const fmt1=v=>v==null?"–":v.toLocaleString("es",{maximumFractionDigits:1});
 
 function drawChart(){
-  const W=820,H=360,pad=44,m=CMP.metric,pct=CMP.axis==="pct";
+  const W=820,H=360,pad=44,m=CMP.metric,byTemp=m==="powerTemp",pct=!byTemp&&CMP.axis==="pct";
+  $("ax-sec").style.visibility=$("ax-pct").style.visibility=byTemp?"hidden":"visible";
   if(CMP.rank) CMP.rank=computeRank();          // recalcular si se quitó alguna receta
   const R=CMP.rank;
   const all=CMP.profiles.map(p=>seriesOf(p,m)).filter(s=>s.length);
   if(!all.length){ $("cmp-chart").innerHTML="<div class='note'>Sin datos de "+m+" para estas recetas.</div>"; $("cmp-legend").innerHTML=""; return; }
-  const maxT=pct?100:Math.max(...all.flat().map(p=>p[0]),1);
+  const minT=byTemp?Math.floor(Math.min(...all.flat().map(p=>p[0]))/10)*10:0;
+  const maxT=pct?100:byTemp?Math.ceil(Math.max(...all.flat().map(p=>p[0]))/10)*10:Math.max(...all.flat().map(p=>p[0]),1);
   let minY=Math.min(...all.flat().map(p=>p[1])), maxY=Math.max(...all.flat().map(p=>p[1]));
-  if(m==="power"){minY=0;maxY=9;}else{minY=Math.floor(minY/10)*10;maxY=Math.ceil(maxY/10)*10;}
-  const x=t=>pad+(t/maxT)*(W-pad-10), y=v=>H-pad-((v-minY)/(maxY-minY||1))*(H-pad-14), step=m==="power";
-  const tx=(p,t)=>pct?t/durOf(p)*100:t;           // tiempo → eje (seg o %)
+  if(m!=="beanTemp"){minY=0;maxY=9;}else{minY=Math.floor(minY/10)*10;maxY=Math.ceil(maxY/10)*10;}
+  const x=t=>pad+((t-minT)/((maxT-minT)||1))*(W-pad-10), y=v=>H-pad-((v-minY)/(maxY-minY||1))*(H-pad-14), step=m!=="beanTemp";
+  const tx=(p,t)=>byTemp?t:pct?t/durOf(p)*100:t;  // tiempo → eje (seg o %); en vista por temp. la serie ya viene en °C
   const parts=[];
   const ticks=step?[0,1,2,3,4,5,6,7,8,9]:Array.from({length:6},(_,i)=>maxY-i*(maxY-minY)/5);
   ticks.forEach(val=>{ const gy=y(val);
     parts.push(`<line x1="${pad}" y1="${gy}" x2="${W-10}" y2="${gy}" stroke="#3a2c22"/>`);
     parts.push(`<text x="6" y="${gy+4}" fill="#b09c8a" font-size="11">${Math.round(val)}</text>`); });
   if(pct){ for(let g=0;g<=100;g+=20) parts.push(`<text x="${x(g)}" y="${H-pad+16}" fill="#b09c8a" font-size="11" text-anchor="middle">${g}%</text>`); }
+  else if(byTemp){ const st=(maxT-minT)>120?20:10; for(let v=minT;v<=maxT;v+=st) parts.push(`<text x="${x(v)}" y="${H-pad+16}" fill="#b09c8a" font-size="11" text-anchor="middle">${v}°</text>`); }
   else { for(let s=0;s<=maxT;s+=Math.max(60,Math.round(maxT/6/60)*60))
     parts.push(`<text x="${x(s)}" y="${H-pad+16}" fill="#b09c8a" font-size="11" text-anchor="middle">${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}</text>`); }
-  CMP.profiles.forEach((p,i)=>{ const fc=p.milestones&&p.milestones.firstCrackStart; if(!fc) return; const fx=tx(p,fc);
-    if(fx<=maxT) parts.push(`<line class="cmpfc" data-i="${i}" x1="${x(fx)}" y1="${pad}" x2="${x(fx)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`); });
+  CMP.profiles.forEach((p,i)=>{ const fc=p.milestones&&p.milestones.firstCrackStart; if(!fc) return; const fx=byTemp?tempAt(p,fc):tx(p,fc);
+    if(fx!=null&&fx>=minT&&fx<=maxT) parts.push(`<line class="cmpfc" data-i="${i}" x1="${x(fx)}" y1="${pad}" x2="${x(fx)}" y2="${H-pad}" stroke="${COLORS[i%COLORS.length]}" stroke-dasharray="3 3" opacity="0.4"/>`); });
   // mediana punto a punto (referencia gris) cuando hay ranking y eje en %
-  if(R&&pct){ const ref=m==="power"?R.ref.pw:R.ref.bt; let d=""; let started=false;
+  if(R&&pct&&!byTemp){ const ref=m==="power"?R.ref.pw:R.ref.bt; let d=""; let started=false;
     ref.forEach((v,g)=>{ if(v==null) return; const px=x(g/(GRID-1)*100),py=y(v); if(!started){d+=`M ${px} ${py}`;started=true;} else d+=step?` H ${px} V ${py}`:` L ${px} ${py}`; });
     if(d) parts.push(`<path d="${d}" fill="none" stroke="#b09c8a" stroke-width="2" stroke-dasharray="6 4" opacity="0.55" style="pointer-events:none"><title>mediana punto a punto</title></path>`); }
   CMP.profiles.forEach((p,i)=>{ const s=seriesOf(p,m); if(!s.length) return; const col=COLORS[i%COLORS.length]; let d="";
@@ -422,7 +442,7 @@ function drawChart(){
     parts.push(`<path class="cmpline" data-i="${i}" d="${d}" fill="none" stroke="${col}" stroke-width="2"${dash} style="pointer-events:none"/>`); });
   parts.push(`<line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="#6b5544"/>`);
   parts.push(`<line x1="${pad}" y1="${H-pad}" x2="${W-10}" y2="${H-pad}" stroke="#6b5544"/>`);
-  const xl=(pct?"% del tueste (alineado al 100%)":"tiempo (min:seg)")+" · punteado = 1er crack"+(R&&pct?" · gris = mediana · discontinua = atípica":"");
+  const xl=(byTemp?"temperatura de grano (°C) desde el punto de giro":pct?"% del tueste (alineado al 100%)":"tiempo (min:seg)")+" · punteado = 1er crack"+(R&&pct?" · gris = mediana":"")+(R?" · discontinua = atípica":"");
   parts.push(`<text x="${W/2}" y="${H-6}" fill="#b09c8a" font-size="11" text-anchor="middle">${xl}</text>`);
   $("cmp-chart").innerHTML=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${parts.join("")}</svg>`;
   const order=R?R.order:CMP.profiles.map((_,i)=>i);
