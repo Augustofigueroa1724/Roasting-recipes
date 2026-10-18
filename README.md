@@ -96,8 +96,11 @@ Abre `http://localhost:8000` (en Codespaces, pestaña **PORTS** → puerto 8000)
 - Busca por **texto libre** o filtra por **origen / proceso / nivel de tueste / dispositivo**.
 - Marca recetas con el **checkbox** (o **Seleccionar todo**) y pulsa **Comparar selección**.
 - En el gráfico: pestañas **Power (1–9)** y **Temperatura**, líneas de **1er crack**,
-  **resaltado** por leyenda (clic para fijar), **×** para quitar una receta, y un
-  **resumen** que detecta cuál se separa más.
+  **resaltado** por leyenda (clic para fijar) y **×** para quitar una receta.
+- **Eje de tiempo**: `min:seg` (real) o `% tueste` (cada tueste alineado al 100% de su
+  duración; compensa que un lote más grande tarde más).
+- **★ Elegir la central**: elige la receta que mejor representa al conjunto para
+  tostar con ella. Ver [Cómo se elige la receta central](#cómo-se-elige-la-receta-central).
 
 ## Archivos
 
@@ -121,6 +124,27 @@ Abre `http://localhost:8000` (en Codespaces, pestaña **PORTS** → puerto 8000)
 - `GET /api/profile/<uid>` — perfil de tueste (Power/Fan/Drum + curva + hitos)
 - `GET /api/compare?uids=a,b,c` — perfiles de varias recetas para comparar
 - `GET /api/local/search` — búsqueda en tu catálogo propio (`catalog.db`)
+
+## Cómo se elige la receta central
+
+Objetivo: de varias recetas parecidas, quedarse con **una real** que esté «por el
+centro» del grupo, descartando las que se salen.
+
+1. Cada perfil se remuestrea en 101 puntos del **0 al 100 % de su duración** (no se
+   alinea al 1er crack: la diferencia de tiempos se debe sobre todo al peso del lote).
+2. Distancia entre dos recetas = **70 %** diferencia media de **Power** (niveles / 9)
+   + **30 %** diferencia media de **temperatura de grano** (°C / 100). Si alguna no
+   tiene curva de temperatura, solo cuenta Power.
+3. La **central** es el **medoide**: la receta que minimiza la suma de distancias a
+   todas las demás. Siempre es una receta existente y no necesita parámetros
+   (equivale a la idea de «quitar el 20 % por arriba y por abajo y coger la más
+   cercana a la media», pero en un paso y sin fijar un porcentaje).
+4. **Atípicas**: con 4 o más recetas, las que distan de la central más de 1,5× la
+   distancia mediana. Se dibujan discontinuas; al quitarlas con × se recalcula todo.
+5. En gris discontinuo se dibuja la **mediana punto a punto** como referencia.
+
+La leyenda queda ordenada de más central a más alejada, con la diferencia media de
+Power (niveles) y de temperatura (°C) respecto a la central.
 
 ## Notas
 
